@@ -5,7 +5,7 @@
 | Layer | Choice | Owner | Why |
 |---|---|---|---|
 | Frontend | **React + Vite (PWA)**, Tailwind CSS, `i18next` for multilingual, IndexedDB (via `idb`) for offline cache | YP | PWA gives offline-first + installable app on cheap Android phones without native build overhead. `i18next` handles multilingual text; TTS for voice output uses the browser `SpeechSynthesis` API (zero backend cost) with a fallback to a pre-recorded audio clip cache for low-bandwidth areas. |
-| Backend (API Gateway) | **Node.js + Express (TypeScript)** | RV | Fast to scaffold in a hackathon, huge middleware ecosystem (auth, rate-limit, compression), non-blocking I/O suits many concurrent low-payload requests from rural users. Talks to ML services over internal HTTP. |
+| Backend (API Gateway) | **Node.js + Express (JavaScript, ES Modules)** | RV | Fast to scaffold in a hackathon, huge middleware ecosystem (auth, rate-limit, compression), non-blocking I/O suits many concurrent low-payload requests from rural users. Uses `import/export` ES module syntax throughout. Talks to ML services over internal HTTP. |
 | Database | **PostgreSQL** (hosted on Supabase or Railway for instant provisioning) | PS | Structured, relational data (farmers, crops, weather, prices, alerts) with strong needs for joins, foreign keys, and geospatial queries (`PostGIS` extension for village/district lookups). Supabase also gives free auth + realtime out of the box, saving hackathon time. |
 | AI/ML Services | **Python + FastAPI**, two separate microservices: `advisory-engine` and `distress-engine`, using `scikit-learn` / `XGBoost` for scoring and a rule-engine + optional LLM call (via API) for advisory text generation | HC (Advisory), KT (Distress) | FastAPI is async, auto-generates OpenAPI docs (useful for RV to integrate fast without back-and-forth), and Python is the natural choice for the ML stack the team already knows. Keeping them as **two separate services** lets HC and KT work in parallel without blocking each other or RV. |
 | Messaging/Alerts | **Node cron job + Twilio (SMS) / Firebase Cloud Messaging (push)** | PS | SMS is the most reliable low-bandwidth channel for farmers; FCM push for the Officer Dashboard web app. |
@@ -60,7 +60,7 @@ flowchart TD
 
 ## 3. Database Design (RV)
 
-**Choice: PostgreSQL** — relational integrity across Farmers/Crops/Alerts is important, `PostGIS` supports village/district geo-queries, and it plays well with both Supabase (fast hackathon setup) and standard ORMs (Prisma/Sequelize) on the Node backend.
+**Choice: PostgreSQL** — relational integrity across Farmers/Crops/Alerts is important, `PostGIS` supports village/district geo-queries, and it plays well with both Supabase (fast hackathon setup) and standard ORMs (Prisma/Sequelize) on the Node.js (JavaScript) backend.
 
 ```mermaid
 erDiagram
@@ -306,10 +306,15 @@ Response `200`:
 
 ## 5. AI/ML Integration Architecture (HC & KT)
 
-**Pattern:** Both ML modules are deployed as **independent FastAPI microservices**, each in its own Docker container, exposed only on the internal Docker network (not publicly). The Node.js Backend is the sole caller — it treats them as internal REST dependencies, never exposing their endpoints directly to the Frontend. This choice (over inline scripts or serverless functions) was made because:
+**Pattern:** Both ML modules are deployed as **independent FastAPI microservices**, each in its own Docker container, exposed only on the internal Docker network (not publicly). The Node.js (JavaScript, ES Modules) Backend is the sole caller — it treats them as internal REST dependencies, never exposing their endpoints directly to the Frontend. This choice (over inline scripts or serverless functions) was made because:
 - HC and KT can iterate/retrain models independently without touching RV's codebase.
 - FastAPI auto-generates OpenAPI/Swagger docs, so RV can integrate against a contract immediately, even with stub responses, before the real models are ready.
 - Containerized services are trivially deployable alongside the backend via `docker-compose` for the live demo, with clean horizontal separation if one service needs to scale or be swapped later (e.g., distress model retrained with new data mid-hackathon).
+
+**Backend JavaScript conventions:**
+- All files use `import`/`export` ES module syntax (`"type": "module"` in `package.json`).
+- No TypeScript — plain `.js` files throughout.
+- JSDoc comments used for type hints where helpful.
 
 **Internal service contracts (not public-facing):**
 - `POST /internal/advisory/generate` — Advisory Engine (HC): input = weather/soil/crop/location JSON → output = advisory text + language + audio flag.
