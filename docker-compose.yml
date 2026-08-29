@@ -1,0 +1,68 @@
+version: '3.9'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: cropx_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cropx
+      POSTGRES_USER: cropx_user
+      POSTGRES_PASSWORD: cropx_pass
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # Node.js Backend API Gateway
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cropx_backend
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://cropx_user:cropx_pass@db:5432/cropx
+      ADVISORY_ENGINE_URL: http://advisory-engine:8001
+      DISTRESS_ENGINE_URL: http://distress-engine:8002
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - db
+      - advisory-engine
+      - distress-engine
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  # Advisory Engine — FastAPI (HC)
+  advisory-engine:
+    build:
+      context: ./ml-services/advisory-engine
+      dockerfile: Dockerfile
+    container_name: cropx_advisory_engine
+    restart: unless-stopped
+    ports:
+      - '8001:8001'
+    environment:
+      PORT: 8001
+
+  # Distress Engine — FastAPI (KT)
+  distress-engine:
+    build:
+      context: ./ml-services/distress-engine
+      dockerfile: Dockerfile
+    container_name: cropx_distress_engine
+    restart: unless-stopped
+    ports:
+      - '8002:8002'
+    environment:
+      PORT: 8002
+
+volumes:
+  pgdata:

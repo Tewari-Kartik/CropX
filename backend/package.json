@@ -1,0 +1,35 @@
+{
+  "name": "cropx-backend",
+  "version": "1.0.0",
+  "description": "CropX Backend API Gateway - Node.js + Express (ES Modules)",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.12.0",
+    "dotenv": "^16.4.5",
+    "axios": "^1.7.2",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.3.1",
+    "compression": "^1.7.4",
+    "node-cron": "^3.0.3",
+    "twilio": "^5.2.2",
+    "firebase-admin": "^12.2.0",
+    "morgan": "^1.10.0",
+    "joi": "^17.13.1",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
