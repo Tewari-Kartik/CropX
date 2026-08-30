@@ -1,9 +1,11 @@
-import admin from 'firebase-admin';
+import { initializeApp, getApps } from 'firebase-admin/app';
+import { getMessaging } from 'firebase-admin/messaging';
+import { cert } from 'firebase-admin/app';
 
 // Initialize Firebase Admin once
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
+if (!getApps().length) {
+  initializeApp({
+    credential: cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
       privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
@@ -24,7 +26,8 @@ export async function sendPushNotification({ title, body, data = {} }) {
         Object.entries(data).map(([k, v]) => [k, String(v)])
       ),
     };
-    const response = await admin.messaging().send(message);
+    const messaging = getMessaging();
+    const response = await messaging.send(message);
     console.log(`[Push] Notification sent:`, response);
     return response;
   } catch (err) {

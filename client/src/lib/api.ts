@@ -32,10 +32,20 @@ export interface CreateFarmerPayload {
 }
 
 export interface CreateFarmerData {
-  farmer_id: string;
-  full_name: string;
-  region_id: string;
-  created_at: string;
+  already_registered: boolean;
+  farmer: {
+    farmer_id: string;
+    full_name: string;
+    region_id: string;
+    created_at: string;
+    [key: string]: unknown;
+  };
+  crops: Array<{
+    crop_id: string;
+    crop_name: string;
+    sowing_date: string;
+    irrigation_type: string;
+  }>;
 }
 
 // §4.2 Get Advisory

@@ -7,6 +7,7 @@ const TOKEN_KEY = "cropx-token";
 const FARMER_ID_KEY = "cropx-farmer-id";
 const ROLE_KEY = "cropx-role";
 const NAME_KEY = "cropx-farmer-name";
+const CROP_ID_KEY = "cropx-crop-id";
 
 export interface AuthSession {
   token: string;
@@ -47,6 +48,16 @@ export function getFarmerName(): string | null {
   return localStorage.getItem(NAME_KEY);
 }
 
+/** Save the primary crop id (used by advisory page) */
+export function saveCropId(cropId: string): void {
+  localStorage.setItem(CROP_ID_KEY, cropId);
+}
+
+/** Get the stored primary crop id */
+export function getCropId(): string | null {
+  return localStorage.getItem(CROP_ID_KEY);
+}
+
 /** Check if user is logged in */
 export function isLoggedIn(): boolean {
   return !!getToken();
@@ -58,4 +69,5 @@ export function clearSession(): void {
   localStorage.removeItem(FARMER_ID_KEY);
   localStorage.removeItem(ROLE_KEY);
   localStorage.removeItem(NAME_KEY);
+  localStorage.removeItem(CROP_ID_KEY);
 }
