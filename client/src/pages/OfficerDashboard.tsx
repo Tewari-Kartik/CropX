@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { getHighRiskAlerts, type AlertItem } from "@/lib/api";
+import { getRole } from "@/lib/auth";
+import { demoAlerts } from "@/mocks/alerts";
 
 // Risk band visual config — color + icon, not color alone (accessibility)
 const riskConfig: Record<string, { icon: typeof ShieldCheck; label: string }> = {
@@ -21,82 +23,6 @@ const riskConfig: Record<string, { icon: typeof ShieldCheck; label: string }> = 
   high: { icon: AlertCircle, label: "High" },
   critical: { icon: Flame, label: "Critical" },
 };
-
-// Demo data for when backend is unavailable
-const demoAlerts: AlertItem[] = [
-  {
-    alert_id: "al-001",
-    farmer_id: "f-001",
-    farmer_name: "Ramesh Kumar",
-    phone_number: "+919876543210",
-    village_name: "Barrackpore",
-    risk_score: 78.4,
-    risk_band: "high",
-    alert_type: "distress",
-    status: "pending",
-    created_at: "2026-08-28T09:05:00Z",
-  },
-  {
-    alert_id: "al-002",
-    farmer_id: "f-002",
-    farmer_name: "Sunita Devi",
-    phone_number: "+919876543211",
-    village_name: "Dumdum",
-    risk_score: 92.1,
-    risk_band: "critical",
-    alert_type: "distress",
-    status: "pending",
-    created_at: "2026-08-28T08:30:00Z",
-  },
-  {
-    alert_id: "al-003",
-    farmer_id: "f-003",
-    farmer_name: "Manoj Singh",
-    phone_number: "+919876543212",
-    village_name: "Kalyani",
-    risk_score: 65.2,
-    risk_band: "high",
-    alert_type: "weather",
-    status: "sent",
-    created_at: "2026-08-27T14:20:00Z",
-  },
-  {
-    alert_id: "al-004",
-    farmer_id: "f-004",
-    farmer_name: "Priya Sharma",
-    phone_number: "+919876543213",
-    village_name: "Barrackpore",
-    risk_score: 88.7,
-    risk_band: "critical",
-    alert_type: "distress",
-    status: "acknowledged",
-    created_at: "2026-08-27T10:15:00Z",
-  },
-  {
-    alert_id: "al-005",
-    farmer_id: "f-005",
-    farmer_name: "Vikram Yadav",
-    phone_number: "+919876543214",
-    village_name: "Habra",
-    risk_score: 71.0,
-    risk_band: "high",
-    alert_type: "market",
-    status: "pending",
-    created_at: "2026-08-28T11:00:00Z",
-  },
-  {
-    alert_id: "al-006",
-    farmer_id: "f-006",
-    farmer_name: "Lakshmi Bai",
-    phone_number: "+919876543215",
-    village_name: "Kalyani",
-    risk_score: 55.3,
-    risk_band: "medium",
-    alert_type: "weather",
-    status: "sent",
-    created_at: "2026-08-26T16:45:00Z",
-  },
-];
 
 export default function OfficerDashboard() {
   const { t } = useTranslation();
@@ -116,8 +42,13 @@ export default function OfficerDashboard() {
     return () => window.removeEventListener("resize", handler);
   }, []);
 
+  // Verify officer role from session (set at login, not here)
   useEffect(() => {
-    localStorage.setItem("cropx-role", "officer");
+    if (getRole() !== "officer") {
+      // Redirect to login if not authenticated as officer
+      // For hackathon: just warn, don't hard-redirect
+      console.warn("[OfficerDashboard] No officer session found. Please log in.");
+    }
   }, []);
 
   useEffect(() => {

@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
@@ -16,6 +17,8 @@ import {
 } from "lucide-react";
 import { YieldChart } from "@/components/dashboard/yield-chart";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { getFarmerById } from "@/lib/api";
+import { getFarmerId, getFarmerName } from "@/lib/auth";
 
 const stats = [
   { nameKey: "dashboard.cropHealth", value: "92%", chip: "Good", icon: Leaf, bg: "var(--primary)" },
@@ -63,7 +66,18 @@ const tasks = [
 
 export default function FarmerDashboard() {
   const { t } = useTranslation();
-  const farmerName = "Rajesh"; // TODO: get from stored farmer profile
+  // Start with the name cached at login, then fetch fresh from API
+  const [farmerName, setFarmerName] = useState<string>(getFarmerName() || "Farmer");
+
+  useEffect(() => {
+    const id = getFarmerId();
+    if (!id) return;
+    getFarmerById(id).then((res) => {
+      if (res.success && res.data?.full_name) {
+        setFarmerName(res.data.full_name.split(" ")[0]); // Use first name only
+      }
+    });
+  }, []);
 
   return (
     <>
@@ -80,9 +94,9 @@ export default function FarmerDashboard() {
           </Link>
           <div className="user-badge">
             <span className="avatar" aria-hidden="true">
-              R
+              {farmerName.charAt(0).toUpperCase()}
             </span>
-            Rajesh K.
+            {farmerName}
           </div>
         </div>
       </div>

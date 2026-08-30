@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 
 import farmerRoutes from './routes/farmers.js';
 import alertRoutes from './routes/alerts.js';
+import authRoutes from './routes/auth.js';
 import weatherRoutes from './routes/weather.js';
 import marketRoutes from './routes/market.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -37,6 +38,7 @@ app.get('/health', (_req, res) => {
 });
 
 // API routes
+app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/farmers', farmerRoutes);
 app.use('/api/v1/alerts', alertRoutes);
 app.use('/api/v1/weather', weatherRoutes);
