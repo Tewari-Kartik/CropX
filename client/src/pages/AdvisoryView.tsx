@@ -5,6 +5,7 @@ import { ArrowLeft, Wifi, WifiOff, Clock, Leaf } from "lucide-react";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import AudioPlayButton from "@/components/AudioPlayButton";
 import { getAdvisory, type AdvisoryData } from "@/lib/api";
+import { getCropId } from "@/lib/auth";
 import { cacheAdvisory, getCachedAdvisory } from "@/lib/db";
 
 export default function AdvisoryView() {
@@ -15,13 +16,17 @@ export default function AdvisoryView() {
   const [error, setError] = useState<string | null>(null);
 
   const farmerId = localStorage.getItem("cropx-farmer-id") || "demo-farmer";
+  const cropId = getCropId(); // saved during registration/onboarding
 
   useEffect(() => {
     async function fetchAdvisory() {
       setLoading(true);
       setError(null);
 
-      const res = await getAdvisory(farmerId, undefined, i18n.language);
+      // Only call real API if we have a crop_id
+      const res = cropId
+        ? await getAdvisory(farmerId, cropId, i18n.language)
+        : { success: false, data: null, error: "No crop selected" };
 
       if (res.success && res.data) {
         setAdvisory(res.data);

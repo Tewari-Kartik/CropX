@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2, Loader2 } from "lucide-react";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { createFarmer, login, type CreateFarmerPayload } from "@/lib/api";
-import { saveSession } from "@/lib/auth";
+import { saveSession, saveCropId } from "@/lib/auth";
 
 interface CropEntry {
   crop_name: string;
@@ -70,6 +70,15 @@ export default function FarmerOnboarding() {
     const res = await createFarmer(payload);
 
     if (res.success && res.data) {
+      // New response shape: { already_registered, farmer, crops }
+      const farmer = res.data.farmer;
+      const crops = res.data.crops || [];
+
+      // Save first crop_id so AdvisoryView can use it
+      if (crops.length > 0 && crops[0].crop_id) {
+        saveCropId(crops[0].crop_id);
+      }
+
       // Auto-login the newly registered farmer
       const loginRes = await login({ phone_number: phone, role: "farmer" });
       if (loginRes.success && loginRes.data) {
@@ -77,11 +86,11 @@ export default function FarmerOnboarding() {
           token: loginRes.data.token,
           farmer_id: loginRes.data.farmer_id,
           role: "farmer",
-          full_name: res.data.full_name,
+          full_name: farmer.full_name,
         });
       } else {
         // Fallback: store farmer_id without a token
-        localStorage.setItem("cropx-farmer-id", res.data.farmer_id);
+        localStorage.setItem("cropx-farmer-id", farmer.farmer_id);
       }
       setSuccess(true);
       setTimeout(() => navigate("/farmer/dashboard"), 2000);
