@@ -1,4 +1,3 @@
-version: '3.9'
 
 services:
   # PostgreSQL Database
@@ -31,7 +30,8 @@ services:
       ADVISORY_ENGINE_URL: http://advisory-engine:8001
       DISTRESS_ENGINE_URL: http://distress-engine:8002
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     depends_on:
       - db
       - advisory-engine
@@ -39,6 +39,21 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
+
+  # React + Vite Frontend PWA (YP)
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        # Points to the backend container on the Docker internal network
+        VITE_API_BASE_URL: http://backend:3000/api/v1
+    container_name: cropx_frontend
+    restart: unless-stopped
+    ports:
+      - '80:80'
+    depends_on:
+      - backend
 
   # Advisory Engine — FastAPI (HC)
   advisory-engine:

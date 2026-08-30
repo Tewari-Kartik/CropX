@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2, Loader2 } from "lucide-react";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
-import { createFarmer, type CreateFarmerPayload } from "@/lib/api";
+import { createFarmer, login, type CreateFarmerPayload } from "@/lib/api";
+import { saveSession } from "@/lib/auth";
 
 interface CropEntry {
   crop_name: string;
@@ -68,10 +69,20 @@ export default function FarmerOnboarding() {
 
     const res = await createFarmer(payload);
 
-    if (res.success) {
-      // Store farmer_id for later use
-      localStorage.setItem("cropx-farmer-id", res.data.farmer_id);
-      localStorage.setItem("cropx-role", "farmer");
+    if (res.success && res.data) {
+      // Auto-login the newly registered farmer
+      const loginRes = await login({ phone_number: phone, role: "farmer" });
+      if (loginRes.success && loginRes.data) {
+        saveSession({
+          token: loginRes.data.token,
+          farmer_id: loginRes.data.farmer_id,
+          role: "farmer",
+          full_name: res.data.full_name,
+        });
+      } else {
+        // Fallback: store farmer_id without a token
+        localStorage.setItem("cropx-farmer-id", res.data.farmer_id);
+      }
       setSuccess(true);
       setTimeout(() => navigate("/farmer/dashboard"), 2000);
     } else {

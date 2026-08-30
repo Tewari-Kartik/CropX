@@ -3,7 +3,7 @@ import Joi from 'joi';
 export const createFarmerSchema = Joi.object({
   full_name: Joi.string().min(2).max(255).required(),
   phone_number: Joi.string().pattern(/^\+?[1-9]\d{9,14}$/).required(),
-  preferred_language: Joi.string().max(10).default('en'),
+  preferred_language: Joi.string().valid('en', 'hi').default('en'),
   region: Joi.object({
     village_name: Joi.string().required(),
     district: Joi.string().required(),

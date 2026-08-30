@@ -153,5 +153,20 @@
     "todaysActions": "Today's Actions",
     "viewAdvisory": "View Advisory",
     "qtlPerAcre": "Qtl / Acre"
+  },
+  "login": {
+    "title": "Sign In",
+    "subtitle": "Log in to access your dashboard.",
+    "farmerSection": "Farmer Login",
+    "phone": "Phone Number",
+    "phonePlaceholder": "e.g. +919876543210",
+    "phoneRequired": "Please enter your phone number.",
+    "farmerLogin": "Login as Farmer",
+    "officerSection": "Officer Login",
+    "officerDesc": "Access the high-risk alerts dashboard.",
+    "officerLogin": "Login as Officer",
+    "failed": "Login failed. Please try again.",
+    "noAccount": "Don't have an account?",
+    "register": "Register here"
   }
 }

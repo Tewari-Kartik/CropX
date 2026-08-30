@@ -3,7 +3,7 @@
  * All responses follow the envelope: { success: boolean, data: T, error: string | null }
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3001/api/v1";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
 
 // ===== Response Types =====
 
@@ -84,13 +84,34 @@ export interface HighRiskAlertsData {
   alerts: AlertItem[];
 }
 
+// Auth login types
+export interface LoginPayload {
+  phone_number?: string;
+  role?: "farmer" | "officer";
+}
+
+export interface LoginData {
+  token: string;
+  farmer_id: string | null;
+  full_name?: string;
+  role: "farmer" | "officer";
+}
+
 // ===== API Functions =====
 
 async function apiFetch<T>(url: string, options?: RequestInit): Promise<ApiResponse<T>> {
   try {
+    // Attach stored JWT to every request
+    const token = localStorage.getItem("cropx-token");
+    const authHeaders: Record<string, string> = {};
+    if (token) {
+      authHeaders["Authorization"] = `Bearer ${token}`;
+    }
+
     const res = await fetch(`${API_BASE}${url}`, {
       headers: {
         "Content-Type": "application/json",
+        ...authHeaders,
         ...options?.headers,
       },
       ...options,
@@ -105,6 +126,30 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<ApiRespo
       error: err instanceof Error ? err.message : "Network error",
     };
   }
+}
+
+/** Auth — login with phone number or officer role */
+export function login(payload: LoginPayload) {
+  return apiFetch<LoginData>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Get farmer profile by ID */
+export function getFarmerById(farmerId: string) {
+  return apiFetch<{
+    farmer_id: string;
+    full_name: string;
+    phone_number: string;
+    preferred_language: string;
+    region_id: string;
+    village_name: string;
+    district: string;
+    state: string;
+    land_size_acres: number;
+    created_at: string;
+  }>(`/farmers/${farmerId}`);
 }
 
 /** §4.1 Register a new farmer */

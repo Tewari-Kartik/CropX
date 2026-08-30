@@ -13,6 +13,10 @@ import { createFarmerSchema, distressScoreSchema } from '../validators/farmerVal
 const router = Router();
 
 // POST /api/v1/farmers — Register new farmer
+// NOTE: This route is intentionally public (no authenticate middleware).
+// Farmers self-register before they have a session token. After successful
+// registration, the client immediately calls POST /api/v1/auth/login to
+// get a token for all subsequent authenticated requests.
 router.post('/', validate(createFarmerSchema), createFarmer);
 
 // GET /api/v1/farmers/:farmer_id
