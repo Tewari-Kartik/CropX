@@ -6,7 +6,12 @@ import { startAlertCron } from './services/alertService.js';
 const PORT = process.env.PORT || 3000;
 
 async function startServer() {
-  await connectDB();
+  // Try DB but don't crash server if it fails — useful during dev
+  try {
+    await connectDB();
+  } catch (err) {
+    console.warn('⚠️  Server starting WITHOUT DB connection. Fix DATABASE_URL to enable DB features.');
+  }
 
   app.listen(PORT, () => {
     console.log(`🚀 CropX Backend running on port ${PORT}`);

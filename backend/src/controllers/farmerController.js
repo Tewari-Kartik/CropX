@@ -14,7 +14,48 @@ export async function createFarmer(req, res, next) {
   try {
     await client.query('BEGIN');
 
+    // ── Check if farmer already exists by phone number ──
+    const existing = await client.query(
+      `SELECT f.*, r.village_name, r.district, r.state
+       FROM farmers f
+       JOIN regions r ON f.region_id = r.region_id
+       WHERE f.phone_number = $1`,
+      [phone_number]
+    );
+
+    if (existing.rows.length > 0) {
+      // Farmer already registered — return their info + existing crops
+      const farmer = existing.rows[0];
+
+      // Optionally add any new crops they sent
+      if (crops && crops.length > 0) {
+        for (const crop of crops) {
+          await client.query(
+            `INSERT INTO crops (farmer_id, crop_name, sowing_date, irrigation_type)
+             VALUES ($1, $2, $3, $4)`,
+            [farmer.farmer_id, crop.crop_name, crop.sowing_date, crop.irrigation_type]
+          );
+        }
+      }
+
+      // Fetch all crops for this farmer
+      const cropsResult = await client.query(
+        `SELECT * FROM crops WHERE farmer_id = $1 ORDER BY sowing_date DESC`,
+        [farmer.farmer_id]
+      );
+
+      await client.query('COMMIT');
+      return res.status(200).json(response(true, {
+        already_registered: true,
+        farmer,
+        crops: cropsResult.rows,
+      }));
+    }
+
+    // ── New farmer — register them ──
+
     // Upsert region
+    let regionId;
     const regionResult = await client.query(
       `INSERT INTO regions (village_name, district, state)
        VALUES ($1, $2, $3)
@@ -22,7 +63,17 @@ export async function createFarmer(req, res, next) {
        RETURNING region_id`,
       [region.village_name, region.district, region.state]
     );
-    const regionId = regionResult.rows[0]?.region_id;
+
+    if (regionResult.rows.length > 0) {
+      regionId = regionResult.rows[0].region_id;
+    } else {
+      // Region already existed — fetch its id
+      const existingRegion = await client.query(
+        `SELECT region_id FROM regions WHERE village_name = $1 AND district = $2 AND state = $3`,
+        [region.village_name, region.district, region.state]
+      );
+      regionId = existingRegion.rows[0]?.region_id;
+    }
 
     // Insert farmer
     const farmerResult = await client.query(
@@ -34,26 +85,33 @@ export async function createFarmer(req, res, next) {
     const farmer = farmerResult.rows[0];
 
     // Insert crops
+    const insertedCrops = [];
     if (crops && crops.length > 0) {
       for (const crop of crops) {
-        await client.query(
+        const cropResult = await client.query(
           `INSERT INTO crops (farmer_id, crop_name, sowing_date, irrigation_type)
-           VALUES ($1, $2, $3, $4)`,
+           VALUES ($1, $2, $3, $4)
+           RETURNING *`,
           [farmer.farmer_id, crop.crop_name, crop.sowing_date, crop.irrigation_type]
         );
+        insertedCrops.push(cropResult.rows[0]);
       }
     }
 
     await client.query('COMMIT');
-    res.status(201).json(response(true, farmer));
+    res.status(201).json(response(true, {
+      already_registered: false,
+      farmer,
+      crops: insertedCrops,
+    }));
   } catch (err) {
     await client.query('ROLLBACK');
-    if (err.code === '23505') throw new ApiError(409, 'Phone number already registered');
     next(err);
   } finally {
     client.release();
   }
 }
+
 
 /**
  * GET /api/v1/farmers/:farmer_id
@@ -82,6 +140,8 @@ export async function getAdvisory(req, res, next) {
   try {
     const { farmer_id } = req.params;
     const { crop_id, lang } = req.query;
+
+    if (!crop_id) throw new ApiError(400, 'crop_id query param is required');
 
     // Gather context from DB
     const farmerResult = await pool.query(
@@ -210,7 +270,8 @@ export async function triggerDistressScore(req, res, next) {
     if (['high', 'critical'].includes(score.risk_band)) {
       await pool.query(
         `INSERT INTO alerts (farmer_id, score_id, alert_type, channel, status)
-         VALUES ($1, $2, 'distress', 'sms', 'pending')`,
+         VALUES ($1, $2, 'distress', 'sms', 'pending')
+         ON CONFLICT DO NOTHING`,
         [farmer_id, score.score_id]
       );
     }

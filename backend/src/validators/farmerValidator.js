@@ -1,14 +1,14 @@
 import Joi from 'joi';
 
 export const createFarmerSchema = Joi.object({
-  full_name: Joi.string().min(2).max(255).required(),
+  full_name: Joi.string().min(2).max(255).optional(),   // optional for existing-farmer lookup
   phone_number: Joi.string().pattern(/^\+?[1-9]\d{9,14}$/).required(),
   preferred_language: Joi.string().valid('en', 'hi').default('en'),
   region: Joi.object({
     village_name: Joi.string().required(),
     district: Joi.string().required(),
     state: Joi.string().required(),
-  }).required(),
+  }).optional(),                                          // optional for existing-farmer lookup
   land_size_acres: Joi.number().positive().optional(),
   crops: Joi.array().items(
     Joi.object({

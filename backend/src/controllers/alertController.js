@@ -29,7 +29,8 @@ export async function getHighRiskAlerts(req, res, next) {
 
     if (region_id) {
       params.push(region_id);
-      queryText += ` AND r.region_id = $${params.length}`;
+      // Accept either a UUID region_id or a village name string
+      queryText += ` AND (r.region_id::text = $${params.length} OR r.village_name ILIKE $${params.length})`;
     }
 
     // Count total
