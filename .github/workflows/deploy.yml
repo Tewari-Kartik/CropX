@@ -46,7 +46,7 @@ jobs:
           pip install -r requirements.txt
           python -m pytest tests/ -v
 
-  # ── 2. Native SSH & SCP Deployment to AWS EC2 ──────────────────────────────
+  # ── 2. Native OpenSSH Deployment to AWS EC2 ─────────────────────────────────
   deploy:
     name: Deploy to AWS EC2
     needs: validate-and-build
@@ -57,44 +57,56 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup SSH Agent
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
-
       - name: Deploy to AWS EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER || 'ubuntu' }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
           SERVER_ENV: ${{ secrets.SERVER_ENV }}
         run: |
           set -euo pipefail
 
           mkdir -p ~/.ssh
+
+          # Automatically decode both raw PEM and base64 formatted keys
+          if echo "$EC2_SSH_KEY" | grep -q "BEGIN"; then
+            printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+          else
+            echo "$EC2_SSH_KEY" | base64 -d > ~/.ssh/id_rsa
+          fi
+          chmod 600 ~/.ssh/id_rsa
+
+          # Register EC2 host key
           ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
 
-          # Write SERVER_ENV to temporary file and transfer via SCP
-          printf "%s\n" "$SERVER_ENV" > /tmp/prod_server.env
-          scp -o StrictHostKeyChecking=no /tmp/prod_server.env "$EC2_USER@$EC2_HOST":/tmp/prod_server.env
+          # Transfer .env to remote server
+          printf '%s\n' "$SERVER_ENV" | tr -d '\r' > /tmp/prod_server.env
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa /tmp/prod_server.env "$EC2_USER@$EC2_HOST":/tmp/prod_server.env
 
-          # Execute deployment on AWS EC2
-          ssh -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "
+          # Execute zero-downtime deployment on AWS EC2
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "$EC2_USER@$EC2_HOST" '
             set -euxo pipefail
-            DEPLOY_DIR='/opt/cropx'
-            if [ ! -d \"\$DEPLOY_DIR/.git\" ]; then
-              echo 'Cloning repository...'
-              sudo git clone https://github.com/Tewari-Kartik/CropX.git \"\$DEPLOY_DIR\"
-              sudo chown -R \$(whoami):\$(whoami) \"\$DEPLOY_DIR\"
+            DEPLOY_DIR="/opt/cropx"
+
+            if [ ! -d "$DEPLOY_DIR/.git" ]; then
+              echo "Cloning repository..."
+              sudo git clone https://github.com/Tewari-Kartik/CropX.git "$DEPLOY_DIR"
+              sudo chown -R $(whoami):$(whoami) "$DEPLOY_DIR"
             fi
-            cd \"\$DEPLOY_DIR\"
+
+            cd "$DEPLOY_DIR"
             git fetch origin main
             git reset --hard origin/main
+
             mkdir -p server
             mv -f /tmp/prod_server.env server/.env
+
             chmod +x init-ssl.sh
-            ./init-ssl.sh 'cropx.click' 'admin@cropx.click' 0 || true
+            ./init-ssl.sh "cropx.click" "admin@cropx.click" 0 || true
+
             docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
             docker image prune -f
             docker compose -f docker-compose.prod.yml ps
-            echo '=== Deployment to AWS Succeeded! ==='
-          "
+
+            echo "=== Deployment to AWS Succeeded! ==="
+          '
