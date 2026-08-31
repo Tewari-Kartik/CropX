@@ -19,11 +19,12 @@ import {
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import {
   getHighRiskAlerts,
+  getAllFarmers,
   sendSmsAlert,
+  login,
   type AlertItem,
 } from "@/lib/api";
-import { getRole } from "@/lib/auth";
-import { demoAlerts } from "@/mocks/alerts";
+import { getRole, getToken, saveSession } from "@/lib/auth";
 
 // ── Risk band config ─────────────────────────────────────────────────────────
 const riskConfig: Record<string, { icon: typeof ShieldCheck; label: string }> = {
@@ -46,6 +47,8 @@ interface Toast { id: number; type: "success" | "error"; msg: string }
 
 export default function OfficerDashboard() {
   const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState<"alerts" | "farmers">("alerts");
+
   // ── Alerts state ──
   const [alerts, setAlerts]       = useState<AlertItem[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -54,6 +57,10 @@ export default function OfficerDashboard() {
   const [filterRegion, setFilterRegion] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const limit = 20;
+
+  // ── Farmers state ──
+  const [farmersList, setFarmersList] = useState<any[]>([]);
+  const [farmersTotal, setFarmersTotal] = useState(0);
 
   // ── Send SMS state ──
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -74,19 +81,27 @@ export default function OfficerDashboard() {
     return () => window.removeEventListener("resize", handler);
   }, []);
 
-  // Verify officer role
-  useEffect(() => {
-    if (getRole() !== "officer") {
-      console.warn("[OfficerDashboard] No officer session found.");
+  // Ensure officer session
+  const ensureOfficerAuth = async () => {
+    if (getRole() !== "officer" || !getToken()) {
+      const res = await login({ role: "officer" });
+      if (res.success && res.data) {
+        saveSession({
+          token: res.data.token,
+          farmer_id: res.data.farmer_id,
+          role: "officer",
+        });
+      }
     }
-  }, []);
+  };
 
-  // ── Fetch alerts ──
+  // ── Fetch alerts (real DB only) ──
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
+    await ensureOfficerAuth();
     const res = await getHighRiskAlerts({
       region_id: filterRegion || undefined,
-      min_band: "high",
+      min_band: "medium",   // show medium+high+critical so all real farmers appear
       status: filterStatus || undefined,
       page,
       limit,
@@ -95,18 +110,28 @@ export default function OfficerDashboard() {
       setAlerts(res.data.alerts);
       setTotal(res.data.total);
     } else {
-      let filtered = [...demoAlerts];
-      if (filterRegion) filtered = filtered.filter((a) => a.village_name === filterRegion);
-      if (filterStatus) filtered = filtered.filter((a) => a.status === filterStatus);
-      setAlerts(filtered);
-      setTotal(filtered.length);
+      setAlerts([]);
+      setTotal(0);
     }
     setLoading(false);
   }, [page, filterRegion, filterStatus]);
 
+  // ── Fetch Farmers ──
+  const fetchFarmers = useCallback(async () => {
+    setLoading(true);
+    await ensureOfficerAuth();
+    const res = await getAllFarmers(page, limit);
+    if (res.success && res.data) {
+      setFarmersList(res.data.farmers);
+      setFarmersTotal(res.data.total);
+    }
+    setLoading(false);
+  }, [page]);
+
   useEffect(() => {
-    fetchAlerts();
-  }, [fetchAlerts]);
+    if (activeTab === "alerts") fetchAlerts();
+    else fetchFarmers();
+  }, [activeTab, fetchAlerts, fetchFarmers]);
 
   // ── Send SMS handler ──
   async function handleSendSms(alert: AlertItem) {
@@ -128,7 +153,21 @@ export default function OfficerDashboard() {
   }
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
-  const uniqueVillages = [...new Set(demoAlerts.map((a) => a.village_name))];
+  const [allVillages, setAllVillages] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (alerts.length > 0) {
+      setAllVillages((prev) => [...new Set([...prev, ...alerts.map((a) => a.village_name).filter(Boolean)])]);
+    }
+  }, [alerts]);
+
+  useEffect(() => {
+    if (farmersList.length > 0) {
+      setAllVillages((prev) => [...new Set([...prev, ...farmersList.map((f) => f.village_name).filter(Boolean)])]);
+    }
+  }, [farmersList]);
+
+  const uniqueVillages = allVillages;
 
   const renderRiskBadge = (band: string) => {
     const config = riskConfig[band] || riskConfig.low;
@@ -192,16 +231,40 @@ export default function OfficerDashboard() {
       </div>
 
       <div className="officer-body">
-        <div className="dash-head">
+        <div className="dash-head" style={{ marginBottom: "20px" }}>
           <div>
             <h1 className="dash-greeting">{t("officer.title")}</h1>
             <p className="dash-sub">{t("officer.subtitle")}</p>
           </div>
         </div>
 
-        {/* ══════════════════ ALERTS ══════════════════ */}
-        <div>
-          {/* Filters */}
+        <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+          <button
+            onClick={() => { setActiveTab("alerts"); setPage(1); }}
+            style={{
+              padding: "10px 20px", borderRadius: "8px", fontWeight: 700, border: "none",
+              background: activeTab === "alerts" ? "var(--primary)" : "#eee",
+              color: activeTab === "alerts" ? "white" : "var(--dark)", cursor: "pointer"
+            }}
+          >
+            High Risk Alerts
+          </button>
+          <button
+            onClick={() => { setActiveTab("farmers"); setPage(1); }}
+            style={{
+              padding: "10px 20px", borderRadius: "8px", fontWeight: 700, border: "none",
+              background: activeTab === "farmers" ? "var(--primary)" : "#eee",
+              color: activeTab === "farmers" ? "white" : "var(--dark)", cursor: "pointer"
+            }}
+          >
+            All Registered Farmers
+          </button>
+        </div>
+
+        {/* ══════════════════ TAB CONTENT ══════════════════ */}
+        {activeTab === "alerts" ? (
+          <div>
+            {/* Filters */}
             <div className="filters-bar">
               <select
                 className="form-select"
@@ -241,7 +304,10 @@ export default function OfficerDashboard() {
             ) : alerts.length === 0 ? (
               <div style={{ border: "var(--border)", background: "white", padding: "60px 20px", textAlign: "center" }}>
                 <ShieldCheck size={48} strokeWidth={1.25} style={{ color: "var(--primary)", margin: "0 auto 16px" }} />
-                <p style={{ fontWeight: 700, fontSize: "16px" }}>{t("officer.noAlerts")}</p>
+                <p style={{ fontWeight: 700, fontSize: "16px" }}>No farmers with risk scores found</p>
+                <p style={{ fontSize: "13px", color: "#888", marginTop: "8px" }}>
+                  Farmers appear here once distress scores are computed. Register farmers and run the daily scoring job.
+                </p>
               </div>
             ) : isDesktop ? (
               <div style={{ overflowX: "auto" }}>
@@ -275,7 +341,7 @@ export default function OfficerDashboard() {
                         <td>{alert.village_name}</td>
                         <td>{renderRiskBadge(alert.risk_band)}</td>
                         <td style={{ fontFamily: "Syne, sans-serif", fontWeight: 800, fontSize: "18px" }}>
-                          {alert.risk_score.toFixed(1)}
+                          {Number(alert.risk_score || 0).toFixed(1)}
                         </td>
                         <td style={{ textTransform: "capitalize" }}>{alert.alert_type}</td>
                         <td>{renderStatusBadge(alert.status)}</td>
@@ -314,7 +380,7 @@ export default function OfficerDashboard() {
                       {renderRiskBadge(alert.risk_band)}
                     </div>
                     <div className="alert-card-detail">
-                      {alert.village_name} • Score: <strong>{alert.risk_score.toFixed(1)}</strong> • {alert.alert_type}
+                      {alert.village_name} • Score: <strong>{Number(alert.risk_score || 0).toFixed(1)}</strong> • {alert.alert_type}
                     </div>
                     <div className="alert-card-footer">
                       {renderStatusBadge(alert.status)}
@@ -352,22 +418,74 @@ export default function OfficerDashboard() {
                 ))}
               </div>
             )}
+          </div>
+        ) : (
+          <div>
+            {loading ? (
+              <div>
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="skeleton" style={{ height: "52px", marginBottom: "8px" }} />
+                ))}
+              </div>
+            ) : farmersList.length === 0 ? (
+              <div style={{ border: "var(--border)", background: "white", padding: "60px 20px", textAlign: "center" }}>
+                <p style={{ fontWeight: 700, fontSize: "16px" }}>No registered farmers found.</p>
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table className="alert-table">
+                  <thead>
+                    <tr>
+                      <th>Farmer Name</th>
+                      <th>Phone Number</th>
+                      <th>Village</th>
+                      <th>District</th>
+                      <th>State</th>
+                      <th>Land (Acres)</th>
+                      <th>Registered On</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {farmersList.map((f) => (
+                      <tr key={f.farmer_id}>
+                        <td style={{ fontWeight: 800 }}>{f.full_name}</td>
+                        <td>
+                          <a
+                            href={`tel:${f.phone_number}`}
+                            style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "var(--primary)", textDecoration: "none", fontWeight: 600 }}
+                          >
+                            <Phone size={12} strokeWidth={2.5} />
+                            {f.phone_number}
+                          </a>
+                        </td>
+                        <td>{f.village_name}</td>
+                        <td>{f.district}</td>
+                        <td>{f.state}</td>
+                        <td style={{ fontWeight: 700 }}>{f.land_size_acres}</td>
+                        <td style={{ fontSize: "13px", color: "#566047" }}>{formatDate(f.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-            {/* Pagination */}
-            {totalPages > 1 && (
+            {/* Pagination for Farmers */}
+            {Math.max(1, Math.ceil(farmersTotal / limit)) > 1 && (
               <div className="pagination">
                 <button className="page-btn" onClick={() => setPage(Math.max(1, page - 1))} disabled={page <= 1} type="button">
                   <ChevronLeft size={18} strokeWidth={2.5} />
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                {Array.from({ length: Math.max(1, Math.ceil(farmersTotal / limit)) }, (_, i) => i + 1).map((p) => (
                   <button key={p} className={`page-btn ${p === page ? "active" : ""}`} onClick={() => setPage(p)} type="button">{p}</button>
                 ))}
-                <button className="page-btn" onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page >= totalPages} type="button">
+                <button className="page-btn" onClick={() => setPage(Math.min(Math.max(1, Math.ceil(farmersTotal / limit)), page + 1))} disabled={page >= Math.max(1, Math.ceil(farmersTotal / limit))} type="button">
                   <ChevronRight size={18} strokeWidth={2.5} />
                 </button>
               </div>
             )}
-        </div>
+          </div>
+        )}
       </div>
 
       <style>{`

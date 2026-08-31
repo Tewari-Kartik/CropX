@@ -184,6 +184,13 @@ export interface FarmerProfileData {
   }>;
 }
 
+/** Get all registered farmers (officer dashboard) */
+export function getAllFarmers(page = 1, limit = 50) {
+  return apiFetch<{ total: number; page: number; limit: number; farmers: any[] }>(
+    `/farmers?page=${page}&limit=${limit}`
+  );
+}
+
 /** Get farmer profile by ID (including registered crops) */
 export function getFarmerById(farmerId: string) {
   return apiFetch<FarmerProfileData>(`/farmers/${farmerId}`);

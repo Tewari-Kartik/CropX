@@ -157,37 +157,7 @@ export default function AdvisoryView() {
             <h1 className="app-page-title">{t("advisory.title")}</h1>
             <p className="app-page-subtitle">{t("advisory.subtitle")}</p>
           </div>
-          {crops.length > 1 && (
-            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              {crops.map((c) => {
-                const isActive = c.crop_name === activeCropName;
-                return (
-                  <button
-                    key={c.crop_name}
-                    onClick={() => {
-                      setActiveCropName(c.crop_name);
-                      saveCropName(c.crop_name);
-                      if (c.crop_id) {
-                        setActiveCropId(c.crop_id);
-                        saveCropId(c.crop_id);
-                      }
-                    }}
-                    style={{
-                      padding: "6px 12px",
-                      fontWeight: 700,
-                      fontSize: "12px",
-                      border: "2px solid var(--dark)",
-                      background: isActive ? "var(--primary)" : "white",
-                      color: isActive ? "white" : "var(--dark)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    🌱 {c.crop_name}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+
         </div>
 
         {/* ── Multi-Crop Switcher in Advisory View ── */}

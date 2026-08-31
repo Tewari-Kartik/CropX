@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
 import {
   createFarmer,
+  getAllFarmers,
   getFarmerById,
   getAdvisory,
   getDistressScore,
@@ -11,6 +12,9 @@ import { validate } from '../middleware/validate.js';
 import { createFarmerSchema, distressScoreSchema } from '../validators/farmerValidator.js';
 
 const router = Router();
+
+// GET /api/v1/farmers — Get all registered farmers
+router.get('/', authenticate, getAllFarmers);
 
 // POST /api/v1/farmers — Register new farmer
 // NOTE: This route is intentionally public (no authenticate middleware).
