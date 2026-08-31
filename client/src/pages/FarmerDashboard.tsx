@@ -18,21 +18,15 @@ import {
 import { YieldChart } from "@/components/dashboard/yield-chart";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { getFarmerById } from "@/lib/api";
-import { getFarmerId, getFarmerName } from "@/lib/auth";
+import { getFarmerId, getFarmerName, getCropName, getCrops, saveCropName, saveCropId } from "@/lib/auth";
 
-const stats = [
-  { nameKey: "dashboard.cropHealth", value: "92%", chip: "Good", icon: Leaf, bg: "var(--primary)" },
-  { nameKey: "dashboard.bestPrice", value: "₹2,340", chip: "Wheat", icon: IndianRupee, bg: "var(--secondary)" },
-  { nameKey: "dashboard.rainChance", value: "60%", chip: "Tomorrow", icon: CloudRain, bg: "var(--dark)" },
-  { nameKey: "dashboard.openAlerts", value: "3", chip: "Action", icon: Bell, bg: "var(--primary)" },
-];
-
-const prices = [
-  { crop: "Wheat", market: "Azadpur Mandi", value: "₹2,340", trend: "up", change: "+4.2%" },
+const defaultPrices = [
+  { crop: "Rice", market: "Karnal Mandi", value: "₹3,880", trend: "up", change: "+1.8%" },
   { crop: "Rice (Basmati)", market: "Karnal Mandi", value: "₹3,880", trend: "up", change: "+1.8%" },
-  { crop: "Onion", market: "Nashik Mandi", value: "₹1,120", trend: "down", change: "-3.1%" },
+  { crop: "Wheat", market: "Azadpur Mandi", value: "₹2,340", trend: "up", change: "+4.2%" },
   { crop: "Tomato", market: "Kolar Mandi", value: "₹1,650", trend: "up", change: "+6.5%" },
   { crop: "Cotton", market: "Rajkot Mandi", value: "₹6,240", trend: "down", change: "-0.9%" },
+  { crop: "Onion", market: "Nashik Mandi", value: "₹1,120", trend: "down", change: "-3.1%" },
 ];
 
 const forecast = [
@@ -43,41 +37,66 @@ const forecast = [
   { day: "Fri", temp: "32°", rain: "5%", icon: Sun },
 ];
 
-const tasks = [
-  {
-    title: "Irrigate Field B",
-    detail: "Soil moisture is low. Water the wheat block before noon.",
-    time: "Today",
-    color: "var(--primary)",
-  },
-  {
-    title: "Spray for leaf rust",
-    detail: "Early signs detected on your last crop scan. Use recommended fungicide.",
-    time: "In 2 days",
-    color: "var(--secondary)",
-  },
-  {
-    title: "Sell onions",
-    detail: "Prices dipped 3% but expected to recover by weekend. Hold if you can.",
-    time: "This week",
-    color: "var(--dark)",
-  },
-];
-
 export default function FarmerDashboard() {
   const { t } = useTranslation();
-  // Start with the name cached at login, then fetch fresh from API
   const [farmerName, setFarmerName] = useState<string>(getFarmerName() || "Farmer");
+  const [cropsList, setCropsList] = useState(getCrops());
+  const [selectedCrop, setSelectedCrop] = useState<string>(getCropName() || (cropsList[0]?.crop_name) || "Rice");
 
   useEffect(() => {
     const id = getFarmerId();
     if (!id) return;
     getFarmerById(id).then((res) => {
-      if (res.success && res.data?.full_name) {
-        setFarmerName(res.data.full_name.split(" ")[0]); // Use first name only
+      if (res.success && res.data) {
+        if (res.data.full_name) {
+          setFarmerName(res.data.full_name.split(" ")[0]);
+        }
+        if (res.data.crops && res.data.crops.length > 0) {
+          setCropsList(res.data.crops);
+          if (!getCropName()) {
+            setSelectedCrop(res.data.crops[0].crop_name);
+            saveCropName(res.data.crops[0].crop_name);
+            if (res.data.crops[0].crop_id) {
+              saveCropId(res.data.crops[0].crop_id);
+            }
+          }
+        }
       }
     });
   }, []);
+
+  // Find best matched price for the selected crop
+  const matchedPriceItem = defaultPrices.find(
+    (p) => p.crop.toLowerCase().includes(selectedCrop.toLowerCase()) || selectedCrop.toLowerCase().includes(p.crop.toLowerCase())
+  ) || { crop: selectedCrop, market: "Local Mandi", value: "₹3,150", trend: "up", change: "+2.4%" };
+
+  const dynamicStats = [
+    { nameKey: "dashboard.cropHealth", value: "94%", chip: "Good", icon: Leaf, bg: "var(--primary)" },
+    { nameKey: "dashboard.bestPrice", value: matchedPriceItem.value, chip: selectedCrop, icon: IndianRupee, bg: "var(--secondary)" },
+    { nameKey: "dashboard.rainChance", value: "60%", chip: "Tomorrow", icon: CloudRain, bg: "var(--dark)" },
+    { nameKey: "dashboard.openAlerts", value: "2", chip: "Action", icon: Bell, bg: "var(--primary)" },
+  ];
+
+  const dynamicTasks = [
+    {
+      title: `Irrigate ${selectedCrop} Field`,
+      detail: `Check soil moisture for ${selectedCrop}. Follow recommended schedule.`,
+      time: "Today",
+      color: "var(--primary)",
+    },
+    {
+      title: `${selectedCrop} Health Inspection`,
+      detail: `Inspect leaves for fungal spotting and pest infestation.`,
+      time: "In 2 days",
+      color: "var(--secondary)",
+    },
+    {
+      title: `Market Alert: ${selectedCrop}`,
+      detail: `Current Mandi price is ${matchedPriceItem.value}/qtl (${matchedPriceItem.change}).`,
+      time: "This week",
+      color: "var(--dark)",
+    },
+  ];
 
   return (
     <>
@@ -110,6 +129,33 @@ export default function FarmerDashboard() {
             <p className="dash-sub">{t("dashboard.subtitle")}</p>
           </div>
           <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+            {cropsList.length > 1 && (
+              <select
+                value={selectedCrop}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedCrop(val);
+                  saveCropName(val);
+                  const found = cropsList.find((c) => c.crop_name === val);
+                  if (found?.crop_id) saveCropId(found.crop_id);
+                }}
+                style={{
+                  padding: "8px 12px",
+                  fontWeight: 700,
+                  fontSize: "13px",
+                  border: "2px solid var(--dark)",
+                  background: "white",
+                  cursor: "pointer",
+                  borderRadius: "0px",
+                }}
+              >
+                {cropsList.map((c) => (
+                  <option key={c.crop_name} value={c.crop_name}>
+                    🌱 {c.crop_name}
+                  </option>
+                ))}
+              </select>
+            )}
             <Link
               to="/farmer/advisory"
               className="btn-cta"
@@ -119,14 +165,14 @@ export default function FarmerDashboard() {
               {t("dashboard.viewAdvisory")}
             </Link>
             <span className="season-badge">
-              <Leaf size={16} strokeWidth={2.5} aria-hidden="true" /> {t("dashboard.season")}
+              <Leaf size={16} strokeWidth={2.5} aria-hidden="true" /> {selectedCrop} • {t("dashboard.season")}
             </span>
           </div>
         </div>
 
         {/* Stat cards */}
         <section className="stat-cards" aria-label="Farm overview">
-          {stats.map((s) => {
+          {dynamicStats.map((s) => {
             const Icon = s.icon;
             return (
               <div className="stat-card" key={s.nameKey}>
@@ -180,7 +226,7 @@ export default function FarmerDashboard() {
                 <span className="panel-tag">{t("dashboard.perQuintal")}</span>
               </div>
               <div>
-                {prices.map((p) => {
+                {defaultPrices.map((p) => {
                   const up = p.trend === "up";
                   return (
                     <div className="price-row" key={p.crop}>
@@ -242,7 +288,7 @@ export default function FarmerDashboard() {
                 <span className="panel-tag">3 Tasks</span>
               </div>
               <div>
-                {tasks.map((ta) => (
+                {dynamicTasks.map((ta) => (
                   <div className="task-item" key={ta.title}>
                     <span className="task-dot" style={{ background: ta.color }} aria-hidden="true" />
                     <div className="task-body">

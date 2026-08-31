@@ -8,6 +8,15 @@ const FARMER_ID_KEY = "cropx-farmer-id";
 const ROLE_KEY = "cropx-role";
 const NAME_KEY = "cropx-farmer-name";
 const CROP_ID_KEY = "cropx-crop-id";
+const CROP_NAME_KEY = "cropx-crop-name";
+const CROPS_KEY = "cropx-crops";
+
+export interface CropSessionItem {
+  crop_id?: string;
+  crop_name: string;
+  sowing_date?: string;
+  irrigation_type?: string;
+}
 
 export interface AuthSession {
   token: string;
@@ -58,6 +67,31 @@ export function getCropId(): string | null {
   return localStorage.getItem(CROP_ID_KEY);
 }
 
+/** Save the primary crop name */
+export function saveCropName(cropName: string): void {
+  localStorage.setItem(CROP_NAME_KEY, cropName);
+}
+
+/** Get the stored primary crop name */
+export function getCropName(): string | null {
+  return localStorage.getItem(CROP_NAME_KEY);
+}
+
+/** Save full crops array */
+export function saveCrops(crops: CropSessionItem[]): void {
+  localStorage.setItem(CROPS_KEY, JSON.stringify(crops));
+}
+
+/** Get full crops array */
+export function getCrops(): CropSessionItem[] {
+  try {
+    const raw = localStorage.getItem(CROPS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Check if user is logged in */
 export function isLoggedIn(): boolean {
   return !!getToken();
@@ -70,4 +104,6 @@ export function clearSession(): void {
   localStorage.removeItem(ROLE_KEY);
   localStorage.removeItem(NAME_KEY);
   localStorage.removeItem(CROP_ID_KEY);
+  localStorage.removeItem(CROP_NAME_KEY);
+  localStorage.removeItem(CROPS_KEY);
 }

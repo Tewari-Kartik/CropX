@@ -159,6 +159,12 @@ export function getFarmerById(farmerId: string) {
     state: string;
     land_size_acres: number;
     created_at: string;
+    crops?: Array<{
+      crop_id?: string;
+      crop_name: string;
+      sowing_date?: string;
+      irrigation_type?: string;
+    }>;
   }>(`/farmers/${farmerId}`);
 }
 
