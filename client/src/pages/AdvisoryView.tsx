@@ -157,17 +157,20 @@ export default function AdvisoryView() {
             <h1 className="app-page-title">{t("advisory.title")}</h1>
             <p className="app-page-subtitle">{t("advisory.subtitle")}</p>
           </div>
-          {cropsList.length > 1 && (
+          {crops.length > 1 && (
             <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-              {cropsList.map((c) => {
-                const isActive = c.crop_id === activeCropId;
+              {crops.map((c) => {
+                const isActive = c.crop_name === activeCropName;
                 return (
                   <button
-                    key={c.crop_id}
+                    key={c.crop_name}
                     onClick={() => {
-                      setActiveCropId(c.crop_id);
-                      saveCropId(c.crop_id);
-                      setSearchParams({ crop_id: c.crop_id });
+                      setActiveCropName(c.crop_name);
+                      saveCropName(c.crop_name);
+                      if (c.crop_id) {
+                        setActiveCropId(c.crop_id);
+                        saveCropId(c.crop_id);
+                      }
                     }}
                     style={{
                       padding: "6px 12px",
