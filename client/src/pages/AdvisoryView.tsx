@@ -1,54 +1,85 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Wifi, WifiOff, Clock, Leaf } from "lucide-react";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import AudioPlayButton from "@/components/AudioPlayButton";
-import { getAdvisory, type AdvisoryData } from "@/lib/api";
-import { getCropId } from "@/lib/auth";
+import { getAdvisory, getFarmerById, type AdvisoryData } from "@/lib/api";
+import { getCropId, saveCropId } from "@/lib/auth";
 import { cacheAdvisory, getCachedAdvisory } from "@/lib/db";
+
+interface CropOption {
+  crop_id: string;
+  crop_name: string;
+}
 
 export default function AdvisoryView() {
   const { t, i18n } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [advisory, setAdvisory] = useState<AdvisoryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [isCached, setIsCached] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cropsList, setCropsList] = useState<CropOption[]>([]);
+  const [activeCropId, setActiveCropId] = useState<string>("");
 
   const farmerId = localStorage.getItem("cropx-farmer-id") || "demo-farmer";
-  const cropId = getCropId(); // saved during registration/onboarding
 
   useEffect(() => {
-    async function fetchAdvisory() {
+    async function loadCropsAndAdvisory() {
       setLoading(true);
       setError(null);
 
-      // Only call real API if we have a crop_id
-      const res = cropId
-        ? await getAdvisory(farmerId, cropId, i18n.language)
+      let chosenCropId = searchParams.get("crop_id") || activeCropId || getCropId() || "";
+
+      // Fetch farmer profile to get all registered crops
+      if (farmerId && farmerId !== "demo-farmer") {
+        const profile = await getFarmerById(farmerId);
+        if (profile.success && profile.data?.crops && profile.data.crops.length > 0) {
+          const list: CropOption[] = profile.data.crops.map((c) => ({
+            crop_id: c.crop_id,
+            crop_name: c.crop_name,
+          }));
+          setCropsList(list);
+
+          // If no specific crop chosen yet, default to first registered crop
+          if (!chosenCropId || !list.some((c) => c.crop_id === chosenCropId)) {
+            chosenCropId = list[0].crop_id;
+          }
+        }
+      }
+
+      setActiveCropId(chosenCropId);
+      if (chosenCropId) {
+        saveCropId(chosenCropId);
+      }
+
+      // Fetch AI advisory for chosen crop
+      const res = chosenCropId
+        ? await getAdvisory(farmerId, chosenCropId, i18n.language)
         : { success: false, data: null, error: "No crop selected" };
 
       if (res.success && res.data) {
         setAdvisory(res.data);
         setIsCached(false);
-        // Cache for offline use
-        await cacheAdvisory(farmerId, res.data);
+        await cacheAdvisory(`${farmerId}-${chosenCropId}`, res.data);
       } else {
         // Try offline cache
-        const cached = await getCachedAdvisory(farmerId);
+        const cached = await getCachedAdvisory(`${farmerId}-${chosenCropId}`);
         if (cached) {
           setAdvisory(cached.data);
           setIsCached(true);
           setError(t("advisory.error"));
         } else {
-          // Show demo advisory for hackathon demo
+          // Demo fallback
+          const currentCropName = cropsList.find((c) => c.crop_id === chosenCropId)?.crop_name || "Crop";
           const demoAdvisory: AdvisoryData = {
             advisory_id: "demo-001",
-            crop_name: "Rice",
+            crop_name: currentCropName,
             advisory_text:
               i18n.language === "hi"
-                ? "गुरुवार को अपेक्षित बारिश के कारण सिंचाई 2 दिन के लिए टालें। मिट्टी की नमी पर्याप्त है। बारिश के बाद नाइट्रोजन उर्वरक (यूरिया) 50 किग्रा/एकड़ की दर से डालें। पत्ती के धब्बों के लिए मैनकोज़ेब 2.5 ग्राम/लीटर का छिड़काव करें।"
-                : "Delay irrigation by 2 days due to expected rainfall on Thursday. Soil moisture is currently adequate. After the rain, apply nitrogen fertilizer (urea) at 50 kg/acre. For leaf spot prevention, spray Mancozeb at 2.5 g/litre. Monitor field drainage to prevent waterlogging.",
+                ? `वर्तमान मौसम और मंडी भाव के आधार पर ${currentCropName} की देखभाल करें। जलभराव से बचें और शाम को अनुशंसित पोषक तत्व डालें।`
+                : `Monitor soil moisture and current weather for ${currentCropName}. Ensure adequate drainage and apply balanced fertilizers after rainfall.`,
             language: i18n.language,
             audio_url: "",
             generated_at: new Date().toISOString(),
@@ -61,8 +92,14 @@ export default function AdvisoryView() {
       setLoading(false);
     }
 
-    fetchAdvisory();
-  }, [farmerId, i18n.language, t]);
+    loadCropsAndAdvisory();
+  }, [farmerId, activeCropId, searchParams, i18n.language, t]);
+
+  const handleSelectCrop = (cropId: string) => {
+    setActiveCropId(cropId);
+    setSearchParams({ crop_id: cropId });
+    saveCropId(cropId);
+  };
 
   return (
     <div className="app-container">
@@ -91,6 +128,52 @@ export default function AdvisoryView() {
       <div className="app-body">
         <h1 className="app-page-title">{t("advisory.title")}</h1>
         <p className="app-page-subtitle">{t("advisory.subtitle")}</p>
+
+        {/* ── Multi-Crop Switcher in Advisory View ── */}
+        {cropsList.length > 1 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginBottom: "20px",
+              flexWrap: "wrap",
+            }}
+          >
+            <span style={{ fontSize: "12px", fontWeight: 800, textTransform: "uppercase", color: "#566047" }}>
+              Select Crop:
+            </span>
+            {cropsList.map((c) => {
+              const isSelected = c.crop_id === activeCropId;
+              return (
+                <button
+                  key={c.crop_id}
+                  type="button"
+                  onClick={() => handleSelectCrop(c.crop_id)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "8px 14px",
+                    borderRadius: "6px",
+                    fontWeight: 700,
+                    fontSize: "12px",
+                    border: "2px solid",
+                    borderColor: isSelected ? "var(--primary)" : "#ddd",
+                    background: isSelected ? "var(--primary)" : "white",
+                    color: isSelected ? "white" : "var(--dark)",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  <Leaf size={14} />
+                  {c.crop_name}
+                  {isSelected && <span style={{ fontSize: "10px" }}>✓</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {loading ? (
           <div>

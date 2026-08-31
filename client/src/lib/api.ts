@@ -146,20 +146,57 @@ export function login(payload: LoginPayload) {
   });
 }
 
-/** Get farmer profile by ID */
+export interface WeatherItem {
+  weather_id: string;
+  region_id: string;
+  record_date: string;
+  rainfall_mm: number;
+  temperature_c: number;
+  humidity_pct: number;
+  source: string;
+}
+
+export interface MarketPriceItem {
+  price_id: string;
+  crop_id: string;
+  mandi_name: string;
+  price_date: string;
+  price_per_quintal: number;
+  trend: "up" | "down" | "stable";
+}
+
+export interface FarmerProfileData {
+  farmer_id: string;
+  full_name: string;
+  phone_number: string;
+  preferred_language: string;
+  region_id: string;
+  village_name: string;
+  district: string;
+  state: string;
+  land_size_acres: number;
+  created_at: string;
+  crops?: Array<{
+    crop_id: string;
+    crop_name: string;
+    sowing_date: string;
+    irrigation_type: string;
+  }>;
+}
+
+/** Get farmer profile by ID (including registered crops) */
 export function getFarmerById(farmerId: string) {
-  return apiFetch<{
-    farmer_id: string;
-    full_name: string;
-    phone_number: string;
-    preferred_language: string;
-    region_id: string;
-    village_name: string;
-    district: string;
-    state: string;
-    land_size_acres: number;
-    created_at: string;
-  }>(`/farmers/${farmerId}`);
+  return apiFetch<FarmerProfileData>(`/farmers/${farmerId}`);
+}
+
+/** Get latest weather by region ID */
+export function getWeatherByRegion(regionId: string) {
+  return apiFetch<WeatherItem[]>(`/weather/${regionId}`);
+}
+
+/** Get latest market prices by crop ID */
+export function getMarketPricesByCrop(cropId: string) {
+  return apiFetch<MarketPriceItem[]>(`/market/${cropId}`);
 }
 
 /** §4.1 Register a new farmer */

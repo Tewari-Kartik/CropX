@@ -32,6 +32,9 @@ export default function FarmerOnboarding() {
     { crop_name: "", sowing_date: "", irrigation_type: "rainfed" },
   ]);
 
+  const [isExisting, setIsExisting] = useState(false);
+  const [totalCropsCount, setTotalCropsCount] = useState(1);
+
   const steps = [t("onboarding.step1"), t("onboarding.step2"), t("onboarding.step3")];
 
   const addCrop = () => {
@@ -70,13 +73,15 @@ export default function FarmerOnboarding() {
     const res = await createFarmer(payload);
 
     if (res.success && res.data) {
-      // New response shape: { already_registered, farmer, crops }
+      // Response shape: { already_registered, farmer, crops }
       const farmer = res.data.farmer;
-      const crops = res.data.crops || [];
+      const allCrops = res.data.crops || [];
+      setIsExisting(Boolean(res.data.already_registered));
+      setTotalCropsCount(allCrops.length);
 
       // Save first crop_id so AdvisoryView can use it
-      if (crops.length > 0 && crops[0].crop_id) {
-        saveCropId(crops[0].crop_id);
+      if (allCrops.length > 0 && allCrops[0].crop_id) {
+        saveCropId(allCrops[0].crop_id);
       }
 
       // Auto-login the newly registered farmer
@@ -132,8 +137,9 @@ export default function FarmerOnboarding() {
             ✓
           </div>
           <h2 className="app-page-title" style={{ color: "var(--primary)" }}>
-            {t("onboarding.success")}
+            {isExisting ? `Welcome back! Added new crop (${totalCropsCount} total registered)` : t("onboarding.success")}
           </h2>
+          <p className="app-page-subtitle">Redirecting to your farm dashboard…</p>
         </div>
       </div>
     );

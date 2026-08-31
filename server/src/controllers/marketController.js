@@ -8,10 +8,30 @@ import { response } from '../utils/response.js';
 export async function getMarketPricesByCrop(req, res, next) {
   try {
     const { crop_id } = req.params;
-    const result = await pool.query(
+    let result = await pool.query(
       `SELECT * FROM market_prices WHERE crop_id = $1 ORDER BY price_date DESC LIMIT 10`,
       [crop_id]
     );
+
+    if (result.rows.length === 0) {
+      const cropQuery = await pool.query(`SELECT * FROM crops WHERE crop_id = $1`, [crop_id]);
+      if (cropQuery.rows.length > 0) {
+        const pData = await fetchMandiPrices(cropQuery.rows[0]);
+        if (pData) {
+          await pool.query(
+            `INSERT INTO market_prices (crop_id, mandi_name, price_date, price_per_quintal, trend)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT DO NOTHING`,
+            [crop_id, pData.mandi_name, pData.price_date, pData.price_per_quintal, pData.trend]
+          );
+          result = await pool.query(
+            `SELECT * FROM market_prices WHERE crop_id = $1 ORDER BY price_date DESC LIMIT 10`,
+            [crop_id]
+          );
+        }
+      }
+    }
+
     res.json(response(true, result.rows));
   } catch (err) {
     next(err);

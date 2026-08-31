@@ -26,7 +26,7 @@ app.use(express.urlencoded({ extended: true }));
 // Global rate limiter
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: process.env.NODE_ENV === 'development' ? 5000 : 2000, // Increased to prevent 429s during dev
   standardHeaders: true,
   legacyHeaders: false,
 });

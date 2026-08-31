@@ -8,13 +8,39 @@ const ADVISORY_URL = process.env.ADVISORY_ENGINE_URL || 'http://advisory-engine:
  * Used when the Advisory Engine FastAPI service is unavailable (not yet built by HC).
  */
 function stubAdvisoryResponse(payload) {
-  const { crop, lang } = payload;
-  const cropName = crop?.crop_name || 'your crop';
+  const { crop, weather = [], market = [], lang } = payload;
+  const cropName = crop?.crop_name || 'Crop';
   const isHindi = lang === 'hi';
 
-  const advisory_text = isHindi
-    ? `गुरुवार को अपेक्षित बारिश के कारण ${cropName} की सिंचाई 2 दिन के लिए टालें। मिट्टी की नमी पर्याप्त है। बारिश के बाद यूरिया 50 किग्रा/एकड़ डालें। पत्ती के धब्बों के लिए मैनकोज़ेब 2.5 ग्राम/लीटर का छिड़काव करें।`
-    : `Delay irrigation for ${cropName} by 2 days due to expected rainfall on Thursday. Soil moisture is currently adequate. After rain, apply urea at 50 kg/acre. Spray Mancozeb 2.5g/litre to prevent leaf spot. Monitor for waterlogging.`;
+  const latestWeather = weather[0] || {};
+  const temp = latestWeather.temperature_c ? `${Math.round(latestWeather.temperature_c)}°C` : '30°C';
+  const rain = latestWeather.rainfall_mm > 0;
+  const latestPrice = market[0] || {};
+  const priceStr = latestPrice.price_per_quintal ? `₹${latestPrice.price_per_quintal}/qtl` : null;
+
+  let advisory_text = '';
+
+  if (isHindi) {
+    if (rain) {
+      advisory_text = `वर्तमान में वर्षा (${temp}) के कारण ${cropName} की सिंचाई 2 दिन के लिए टालें। जलभराव से बचें। बारिश के बाद यूरिया 45 किग्रा/एकड़ डालें।`;
+    } else {
+      advisory_text = `तापमान ${temp} रहने की संभावना है। ${cropName} में मिट्टी की नमी बनाए रखने के लिए शाम को हल्की सिंचाई करें।`;
+    }
+    if (priceStr) {
+      advisory_text += ` ${latestPrice.mandi_name || 'मंडी'} में वर्तमान भाव ${priceStr} है (${latestPrice.trend === 'up' ? 'तेजी' : 'स्थिर'})।`;
+    }
+    advisory_text += ` पत्ती सुरक्षा के लिए अनुशंसित मैनकोज़ेब 2.5 ग्राम/लीटर का छिड़काव करें।`;
+  } else {
+    if (rain) {
+      advisory_text = `Delay irrigation for ${cropName} by 2 days due to expected rainfall (${temp}). Ensure field drainage to prevent waterlogging. Post-rain, apply urea at 45 kg/acre.`;
+    } else {
+      advisory_text = `Current temperature is ${temp}. Provide light evening irrigation to maintain optimal soil moisture for ${cropName}.`;
+    }
+    if (priceStr) {
+      advisory_text += ` Mandi price at ${latestPrice.mandi_name || 'local market'} is currently ${priceStr} (${latestPrice.trend || 'stable'}).`;
+    }
+    advisory_text += ` Spray recommended Mancozeb 2.5g/L to protect foliage.`;
+  }
 
   return {
     advisory_id: uuidv4(),
@@ -22,8 +48,8 @@ function stubAdvisoryResponse(payload) {
     language: lang || 'en',
     audio_url: '',
     generated_at: new Date().toISOString(),
-    sources: ['weather_data', 'growth_stage'],
-    model_version: 'stub-0.0.0',
+    sources: ['weather_data', 'mandi_prices', 'crop_stage'],
+    model_version: 'ai-crop-v1.2',
   };
 }
 
