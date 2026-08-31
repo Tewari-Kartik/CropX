@@ -1,49 +1,77 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Wifi, WifiOff, Clock, Leaf } from "lucide-react";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import AudioPlayButton from "@/components/AudioPlayButton";
-import { getAdvisory, type AdvisoryData } from "@/lib/api";
-import { getCropId, getCropName, getCrops, saveCropId, saveCropName } from "@/lib/auth";
+import { getAdvisory, getFarmerById, type AdvisoryData } from "@/lib/api";
+import { getCropId, saveCropId } from "@/lib/auth";
 import { cacheAdvisory, getCachedAdvisory } from "@/lib/db";
+
+interface CropOption {
+  crop_id: string;
+  crop_name: string;
+}
 
 export default function AdvisoryView() {
   const { t, i18n } = useTranslation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [advisory, setAdvisory] = useState<AdvisoryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [isCached, setIsCached] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const crops = getCrops();
-  const [activeCropName, setActiveCropName] = useState<string>(getCropName() || (crops[0]?.crop_name) || "Rice");
-  const [activeCropId, setActiveCropId] = useState<string | null>(getCropId() || (crops[0]?.crop_id) || null);
+  const [cropsList, setCropsList] = useState<CropOption[]>([]);
+  const [activeCropId, setActiveCropId] = useState<string>("");
 
   const farmerId = localStorage.getItem("cropx-farmer-id") || "demo-farmer";
 
   useEffect(() => {
-    async function fetchAdvisory() {
+    async function loadCropsAndAdvisory() {
       setLoading(true);
       setError(null);
 
-      // Call real backend API if cropId is present
-      const res = activeCropId
-        ? await getAdvisory(farmerId, activeCropId, i18n.language)
-        : { success: false, data: null, error: "No crop id" };
+      let chosenCropId = searchParams.get("crop_id") || activeCropId || getCropId() || "";
+
+      // Fetch farmer profile to get all registered crops
+      if (farmerId && farmerId !== "demo-farmer") {
+        const profile = await getFarmerById(farmerId);
+        if (profile.success && profile.data?.crops && profile.data.crops.length > 0) {
+          const list: CropOption[] = profile.data.crops.map((c) => ({
+            crop_id: c.crop_id,
+            crop_name: c.crop_name,
+          }));
+          setCropsList(list);
+
+          // If no specific crop chosen yet, default to first registered crop
+          if (!chosenCropId || !list.some((c) => c.crop_id === chosenCropId)) {
+            chosenCropId = list[0].crop_id;
+          }
+        }
+      }
+
+      setActiveCropId(chosenCropId);
+      if (chosenCropId) {
+        saveCropId(chosenCropId);
+      }
+
+      // Fetch AI advisory for chosen crop
+      const res = chosenCropId
+        ? await getAdvisory(farmerId, chosenCropId, i18n.language)
+        : { success: false, data: null, error: "No crop selected" };
 
       if (res.success && res.data) {
         setAdvisory(res.data);
         setIsCached(false);
-        await cacheAdvisory(farmerId, res.data);
+        await cacheAdvisory(`${farmerId}-${chosenCropId}`, res.data);
       } else {
         // Try offline cache
-        const cached = await getCachedAdvisory(farmerId);
-        if (cached && cached.data && cached.data.crop_name === activeCropName) {
+        const cached = await getCachedAdvisory(`${farmerId}-${chosenCropId}`);
+        if (cached) {
           setAdvisory(cached.data);
           setIsCached(true);
         } else {
           // Generate realistic dynamic advisory tailored to the active crop
-          const crop = activeCropName || "Rice";
+          const crop = cropsList.find((c) => c.crop_id === chosenCropId)?.crop_name || "Rice";
           const isHindi = i18n.language === "hi";
 
           const dynamicAdvisoryMap: Record<string, { hi: string; en: string }> = {
@@ -90,8 +118,14 @@ export default function AdvisoryView() {
       setLoading(false);
     }
 
-    fetchAdvisory();
-  }, [farmerId, activeCropId, activeCropName, i18n.language, t]);
+    loadCropsAndAdvisory();
+  }, [farmerId, activeCropId, searchParams, i18n.language, t]);
+
+  const handleSelectCrop = (cropId: string) => {
+    setActiveCropId(cropId);
+    setSearchParams({ crop_id: cropId });
+    saveCropId(cropId);
+  };
 
   return (
     <div className="app-container">
@@ -155,6 +189,52 @@ export default function AdvisoryView() {
             </div>
           )}
         </div>
+
+        {/* ── Multi-Crop Switcher in Advisory View ── */}
+        {cropsList.length > 1 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginBottom: "20px",
+              flexWrap: "wrap",
+            }}
+          >
+            <span style={{ fontSize: "12px", fontWeight: 800, textTransform: "uppercase", color: "#566047" }}>
+              Select Crop:
+            </span>
+            {cropsList.map((c) => {
+              const isSelected = c.crop_id === activeCropId;
+              return (
+                <button
+                  key={c.crop_id}
+                  type="button"
+                  onClick={() => handleSelectCrop(c.crop_id)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    padding: "8px 14px",
+                    borderRadius: "6px",
+                    fontWeight: 700,
+                    fontSize: "12px",
+                    border: "2px solid",
+                    borderColor: isSelected ? "var(--primary)" : "#ddd",
+                    background: isSelected ? "var(--primary)" : "white",
+                    color: isSelected ? "white" : "var(--dark)",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  <Leaf size={14} />
+                  {c.crop_name}
+                  {isSelected && <span style={{ fontSize: "10px" }}>✓</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {loading ? (
           <div>

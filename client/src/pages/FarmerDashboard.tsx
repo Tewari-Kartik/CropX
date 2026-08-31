@@ -17,19 +17,23 @@ import {
 } from "lucide-react";
 import { YieldChart } from "@/components/dashboard/yield-chart";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
-import { getFarmerById } from "@/lib/api";
-import { getFarmerId, getFarmerName, getCropName, getCrops, saveCropName, saveCropId } from "@/lib/auth";
+import {
+  getFarmerById,
+  getWeatherByRegion,
+  getMarketPricesByCrop,
+  getAdvisory,
+} from "@/lib/api";
+import { getFarmerId, getFarmerName, saveCropId } from "@/lib/auth";
 
 const defaultPrices = [
-  { crop: "Rice", market: "Karnal Mandi", value: "₹3,880", trend: "up", change: "+1.8%" },
-  { crop: "Rice (Basmati)", market: "Karnal Mandi", value: "₹3,880", trend: "up", change: "+1.8%" },
   { crop: "Wheat", market: "Azadpur Mandi", value: "₹2,340", trend: "up", change: "+4.2%" },
+  { crop: "Rice (Basmati)", market: "Karnal Mandi", value: "₹3,880", trend: "up", change: "+1.8%" },
+  { crop: "Onion", market: "Nashik Mandi", value: "₹1,420", trend: "down", change: "-3.1%" },
   { crop: "Tomato", market: "Kolar Mandi", value: "₹1,650", trend: "up", change: "+6.5%" },
   { crop: "Cotton", market: "Rajkot Mandi", value: "₹6,240", trend: "down", change: "-0.9%" },
-  { crop: "Onion", market: "Nashik Mandi", value: "₹1,120", trend: "down", change: "-3.1%" },
 ];
 
-const forecast = [
+const defaultForecast = [
   { day: "Mon", temp: "31°", rain: "10%", icon: Sun },
   { day: "Tue", temp: "29°", rain: "60%", icon: CloudRain },
   { day: "Wed", temp: "28°", rain: "40%", icon: CloudSun },
@@ -37,65 +41,145 @@ const forecast = [
   { day: "Fri", temp: "32°", rain: "5%", icon: Sun },
 ];
 
+interface CropItem {
+  crop_id: string;
+  crop_name: string;
+  sowing_date?: string;
+  irrigation_type?: string;
+}
+
 export default function FarmerDashboard() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [farmerName, setFarmerName] = useState<string>(getFarmerName() || "Farmer");
-  const [cropsList, setCropsList] = useState(getCrops());
-  const [selectedCrop, setSelectedCrop] = useState<string>(getCropName() || (cropsList[0]?.crop_name) || "Rice");
-
-  useEffect(() => {
-    const id = getFarmerId();
-    if (!id) return;
-    getFarmerById(id).then((res) => {
-      if (res.success && res.data) {
-        if (res.data.full_name) {
-          setFarmerName(res.data.full_name.split(" ")[0]);
-        }
-        if (res.data.crops && res.data.crops.length > 0) {
-          setCropsList(res.data.crops);
-          if (!getCropName()) {
-            setSelectedCrop(res.data.crops[0].crop_name);
-            saveCropName(res.data.crops[0].crop_name);
-            if (res.data.crops[0].crop_id) {
-              saveCropId(res.data.crops[0].crop_id);
-            }
-          }
-        }
-      }
-    });
-  }, []);
-
-  // Find best matched price for the selected crop
-  const matchedPriceItem = defaultPrices.find(
-    (p) => p.crop.toLowerCase().includes(selectedCrop.toLowerCase()) || selectedCrop.toLowerCase().includes(p.crop.toLowerCase())
-  ) || { crop: selectedCrop, market: "Local Mandi", value: "₹3,150", trend: "up", change: "+2.4%" };
-
-  const dynamicStats = [
-    { nameKey: "dashboard.cropHealth", value: "94%", chip: "Good", icon: Leaf, bg: "var(--primary)" },
-    { nameKey: "dashboard.bestPrice", value: matchedPriceItem.value, chip: selectedCrop, icon: IndianRupee, bg: "var(--secondary)" },
-    { nameKey: "dashboard.rainChance", value: "60%", chip: "Tomorrow", icon: CloudRain, bg: "var(--dark)" },
-    { nameKey: "dashboard.openAlerts", value: "2", chip: "Action", icon: Bell, bg: "var(--primary)" },
-  ];
-
-  const dynamicTasks = [
+  const [villageName, setVillageName] = useState<string>("Field A");
+  const [farmerCrops, setFarmerCrops] = useState<CropItem[]>([]);
+  const [activeCropIndex, setActiveCropIndex] = useState<number>(0);
+  const [priceList, setPriceList] = useState(defaultPrices);
+  const [forecastList, setForecastList] = useState(defaultForecast);
+  const [bestPriceValue, setBestPriceValue] = useState("₹2,340");
+  const [rainChanceValue, setRainChanceValue] = useState("20%");
+  const [actionTasks, setActionTasks] = useState([
     {
-      title: `Irrigate ${selectedCrop} Field`,
-      detail: `Check soil moisture for ${selectedCrop}. Follow recommended schedule.`,
+      title: "Check soil moisture & irrigation",
+      detail: "Weather model recommends monitoring soil before applying fertilizer.",
       time: "Today",
       color: "var(--primary)",
     },
     {
-      title: `${selectedCrop} Health Inspection`,
-      detail: `Inspect leaves for fungal spotting and pest infestation.`,
-      time: "In 2 days",
+      title: "Mandi price monitoring",
+      detail: "Market trends show stable pricing. Plan harvest dispatch accordingly.",
+      time: "This week",
       color: "var(--secondary)",
     },
-    {
-      title: `Market Alert: ${selectedCrop}`,
-      detail: `Current Mandi price is ${matchedPriceItem.value}/qtl (${matchedPriceItem.change}).`,
-      time: "This week",
-      color: "var(--dark)",
-    },
+  ]);
+
+  useEffect(() => {
+    const id = getFarmerId() || localStorage.getItem("cropx-farmer-id");
+    if (!id) return;
+    const farmerId: string = id;
+
+    async function loadDashboardData(fId: string) {
+      const res = await getFarmerById(fId);
+      if (res.success && res.data) {
+        const farmer = res.data;
+        if (farmer.full_name) {
+          setFarmerName(farmer.full_name.split(" ")[0]);
+        }
+        if (farmer.village_name) {
+          setVillageName(farmer.village_name);
+        }
+
+        const registeredCrops: CropItem[] = (farmer.crops || []).map((c) => ({
+          crop_id: c.crop_id,
+          crop_name: c.crop_name,
+          sowing_date: c.sowing_date,
+          irrigation_type: c.irrigation_type,
+        }));
+
+        setFarmerCrops(registeredCrops);
+
+        if (registeredCrops.length > 0) {
+          const currentCrop = registeredCrops[activeCropIndex] || registeredCrops[0];
+          saveCropId(currentCrop.crop_id);
+
+          // 1. Fetch live market prices for ALL registered crops
+          const allPrices = [...defaultPrices];
+          const userCropPriceRows = [];
+
+          for (const c of registeredCrops) {
+            const mRes = await getMarketPricesByCrop(c.crop_id);
+            if (mRes.success && mRes.data && mRes.data.length > 0) {
+              const latest = mRes.data[0];
+              userCropPriceRows.push({
+                crop: `${c.crop_name} ★`,
+                market: latest.mandi_name,
+                value: `₹${latest.price_per_quintal.toLocaleString("en-IN")}`,
+                trend: latest.trend,
+                change: latest.trend === "up" ? "+3.5%" : latest.trend === "down" ? "-1.8%" : "0.0%",
+              });
+            }
+          }
+
+          if (userCropPriceRows.length > 0) {
+            setBestPriceValue(userCropPriceRows[activeCropIndex]?.value || userCropPriceRows[0].value);
+            // Filter out default benchmarks matching user crop names to avoid duplicates
+            const filteredBenchmarks = allPrices.filter(
+              (p) => !registeredCrops.some((c) => p.crop.toLowerCase().includes(c.crop_name.toLowerCase()))
+            );
+            setPriceList([...userCropPriceRows, ...filteredBenchmarks]);
+          }
+
+          // 2. Fetch AI Advisory for the active crop
+          const advRes = await getAdvisory(fId, currentCrop.crop_id, i18n.language);
+          if (advRes.success && advRes.data?.advisory_text) {
+            setActionTasks([
+              {
+                title: `${currentCrop.crop_name} Advisory Action`,
+                detail: advRes.data.advisory_text,
+                time: "Today",
+                color: "var(--primary)",
+              },
+              {
+                title: `${currentCrop.crop_name} Crop Health`,
+                detail: `Growth stage calibrated for ${currentCrop.crop_name} (${currentCrop.irrigation_type || "rainfed"}).`,
+                time: "This week",
+                color: "var(--secondary)",
+              },
+            ]);
+          }
+        }
+
+        // 3. Fetch live weather for farmer's region
+        if (farmer.region_id) {
+          const weatherRes = await getWeatherByRegion(farmer.region_id);
+          if (weatherRes.success && weatherRes.data && weatherRes.data.length > 0) {
+            const latest = weatherRes.data[0];
+            const tempVal = Math.round(latest.temperature_c);
+            const rainPct = latest.rainfall_mm > 0 ? `${Math.min(95, Math.round(latest.rainfall_mm * 10))}%` : "15%";
+            setRainChanceValue(rainPct);
+
+            setForecastList([
+              { day: "Today", temp: `${tempVal}°`, rain: rainPct, icon: latest.rainfall_mm > 0 ? CloudRain : Sun },
+              { day: "Tue", temp: `${tempVal - 1}°`, rain: "25%", icon: CloudSun },
+              { day: "Wed", temp: `${tempVal + 1}°`, rain: "10%", icon: Sun },
+              { day: "Thu", temp: `${tempVal}°`, rain: "40%", icon: Cloud },
+              { day: "Fri", temp: `${tempVal + 2}°`, rain: "5%", icon: Sun },
+            ]);
+          }
+        }
+      }
+    }
+
+    loadDashboardData(farmerId);
+  }, [activeCropIndex, i18n.language]);
+
+  const activeCrop = farmerCrops[activeCropIndex] || farmerCrops[0] || { crop_name: "Wheat", crop_id: "" };
+
+  const stats = [
+    { nameKey: "dashboard.cropHealth", value: "94%", chip: "Optimal", icon: Leaf, bg: "var(--primary)" },
+    { nameKey: "dashboard.bestPrice", value: bestPriceValue, chip: activeCrop.crop_name, icon: IndianRupee, bg: "var(--secondary)" },
+    { nameKey: "dashboard.rainChance", value: rainChanceValue, chip: villageName, icon: CloudRain, bg: "var(--dark)" },
+    { nameKey: "dashboard.openAlerts", value: String(farmerCrops.length || 1), chip: "Active Crops", icon: Bell, bg: "var(--primary)" },
   ];
 
   return (
@@ -129,50 +213,88 @@ export default function FarmerDashboard() {
             <p className="dash-sub">{t("dashboard.subtitle")}</p>
           </div>
           <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-            {cropsList.length > 1 && (
-              <select
-                value={selectedCrop}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedCrop(val);
-                  saveCropName(val);
-                  const found = cropsList.find((c) => c.crop_name === val);
-                  if (found?.crop_id) saveCropId(found.crop_id);
-                }}
-                style={{
-                  padding: "8px 12px",
-                  fontWeight: 700,
-                  fontSize: "13px",
-                  border: "2px solid var(--dark)",
-                  background: "white",
-                  cursor: "pointer",
-                  borderRadius: "0px",
-                }}
-              >
-                {cropsList.map((c) => (
-                  <option key={c.crop_name} value={c.crop_name}>
-                    🌱 {c.crop_name}
-                  </option>
-                ))}
-              </select>
-            )}
             <Link
-              to="/farmer/advisory"
+              to={activeCrop.crop_id ? `/farmer/advisory?crop_id=${activeCrop.crop_id}` : "/farmer/advisory"}
               className="btn-cta"
               style={{ background: "var(--primary)", color: "white", fontSize: "12px" }}
             >
               <FileText size={16} strokeWidth={2.5} style={{ marginRight: "6px" }} />
-              {t("dashboard.viewAdvisory")}
+              {t("dashboard.viewAdvisory")} ({activeCrop.crop_name})
             </Link>
             <span className="season-badge">
-              <Leaf size={16} strokeWidth={2.5} aria-hidden="true" /> {selectedCrop} • {t("dashboard.season")}
+              <Leaf size={16} strokeWidth={2.5} aria-hidden="true" /> {t("dashboard.season")}
             </span>
           </div>
         </div>
 
+        {/* ── Multi-Crop Selector Pill Bar ── */}
+        {farmerCrops.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              marginBottom: "20px",
+              padding: "12px 16px",
+              background: "white",
+              border: "var(--border)",
+              flexWrap: "wrap",
+            }}
+          >
+            <span style={{ fontSize: "12px", fontWeight: 800, textTransform: "uppercase", color: "#566047", marginRight: "6px" }}>
+              🌾 Registered Crops ({farmerCrops.length}):
+            </span>
+            {farmerCrops.map((c, idx) => (
+              <button
+                key={c.crop_id || idx}
+                type="button"
+                onClick={() => {
+                  setActiveCropIndex(idx);
+                  saveCropId(c.crop_id);
+                }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 14px",
+                  borderRadius: "6px",
+                  fontWeight: 700,
+                  fontSize: "12px",
+                  border: "2px solid",
+                  borderColor: idx === activeCropIndex ? "var(--primary)" : "#ddd",
+                  background: idx === activeCropIndex ? "var(--primary)" : "rgba(0,0,0,0.02)",
+                  color: idx === activeCropIndex ? "white" : "var(--dark)",
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                }}
+              >
+                <Leaf size={14} />
+                {c.crop_name}
+                {idx === activeCropIndex && <span style={{ fontSize: "10px", opacity: 0.9 }}>✓</span>}
+              </button>
+            ))}
+
+            <Link
+              to="/farmer/onboard"
+              style={{
+                marginLeft: "auto",
+                fontSize: "12px",
+                fontWeight: 700,
+                color: "var(--primary)",
+                textDecoration: "none",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              + Add another crop
+            </Link>
+          </div>
+        )}
+
         {/* Stat cards */}
         <section className="stat-cards" aria-label="Farm overview">
-          {dynamicStats.map((s) => {
+          {stats.map((s) => {
             const Icon = s.icon;
             return (
               <div className="stat-card" key={s.nameKey}>
@@ -226,7 +348,7 @@ export default function FarmerDashboard() {
                 <span className="panel-tag">{t("dashboard.perQuintal")}</span>
               </div>
               <div>
-                {defaultPrices.map((p) => {
+                {priceList.map((p) => {
                   const up = p.trend === "up";
                   return (
                     <div className="price-row" key={p.crop}>
@@ -264,11 +386,11 @@ export default function FarmerDashboard() {
                     style={{ display: "inline", marginRight: 4 }}
                     aria-hidden="true"
                   />
-                  Field A
+                  {villageName}
                 </span>
               </div>
               <div className="weather-strip">
-                {forecast.map((f) => {
+                {forecastList.map((f) => {
                   const Icon = f.icon;
                   return (
                     <div className="weather-day" key={f.day}>
@@ -285,10 +407,10 @@ export default function FarmerDashboard() {
             <section className="panel" aria-label="Recommended actions">
               <div className="panel-head">
                 <h3>{t("dashboard.todaysActions")}</h3>
-                <span className="panel-tag">3 Tasks</span>
+                <span className="panel-tag">{actionTasks.length} Tasks</span>
               </div>
               <div>
-                {dynamicTasks.map((ta) => (
+                {actionTasks.map((ta) => (
                   <div className="task-item" key={ta.title}>
                     <span className="task-dot" style={{ background: ta.color }} aria-hidden="true" />
                     <div className="task-body">

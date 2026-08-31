@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2, Loader2 } from "lucide-react";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { createFarmer, login, type CreateFarmerPayload } from "@/lib/api";
-import { saveSession, saveCropId, saveCropName, saveCrops } from "@/lib/auth";
+import { saveSession, saveCropId } from "@/lib/auth";
 
 interface CropEntry {
   crop_name: string;
@@ -31,6 +31,9 @@ export default function FarmerOnboarding() {
   const [crops, setCrops] = useState<CropEntry[]>([
     { crop_name: "", sowing_date: "", irrigation_type: "rainfed" },
   ]);
+
+  const [isExisting, setIsExisting] = useState(false);
+  const [totalCropsCount, setTotalCropsCount] = useState(1);
 
   const steps = [t("onboarding.step1"), t("onboarding.step2"), t("onboarding.step3")];
 
@@ -70,21 +73,15 @@ export default function FarmerOnboarding() {
     const res = await createFarmer(payload);
 
     if (res.success && res.data) {
-      // New response shape: { already_registered, farmer, crops }
+      // Response shape: { already_registered, farmer, crops }
       const farmer = res.data.farmer;
-      const crops = res.data.crops || [];
+      const allCrops = res.data.crops || [];
+      setIsExisting(Boolean(res.data.already_registered));
+      setTotalCropsCount(allCrops.length);
 
-      // Save crops and primary crop so Dashboard & AdvisoryView can use them
-      if (crops.length > 0) {
-        if (crops[0].crop_id) saveCropId(crops[0].crop_id);
-        if (crops[0].crop_name) saveCropName(crops[0].crop_name);
-        saveCrops(crops);
-      } else {
-        const submittedCrops = payload.crops;
-        if (submittedCrops.length > 0) {
-          saveCropName(submittedCrops[0].crop_name);
-          saveCrops(submittedCrops);
-        }
+      // Save first crop_id so AdvisoryView can use it
+      if (allCrops.length > 0 && allCrops[0].crop_id) {
+        saveCropId(allCrops[0].crop_id);
       }
 
       // Auto-login the newly registered farmer
@@ -140,8 +137,9 @@ export default function FarmerOnboarding() {
             ✓
           </div>
           <h2 className="app-page-title" style={{ color: "var(--primary)" }}>
-            {t("onboarding.success")}
+            {isExisting ? `Welcome back! Added new crop (${totalCropsCount} total registered)` : t("onboarding.success")}
           </h2>
+          <p className="app-page-subtitle">Redirecting to your farm dashboard…</p>
         </div>
       </div>
     );

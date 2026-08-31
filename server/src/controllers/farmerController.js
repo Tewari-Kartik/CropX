@@ -1,6 +1,7 @@
 import pool from '../db/pool.js';
 import { callAdvisoryEngine } from '../services/advisoryService.js';
 import { callDistressEngine } from '../services/distressService.js';
+import { fetchWeatherData, fetchMandiPrices } from '../services/externalApiService.js';
 import { ApiError } from '../utils/ApiError.js';
 import { response } from '../utils/response.js';
 
@@ -24,27 +25,60 @@ export async function createFarmer(req, res, next) {
     );
 
     if (existing.rows.length > 0) {
-      // Farmer already registered — return their info + existing crops
+      // Farmer already registered — return their info + existing crops + any newly added crops
       const farmer = existing.rows[0];
+      const newlyAddedCrops = [];
 
-      // Optionally add any new crops they sent
       if (crops && crops.length > 0) {
         for (const crop of crops) {
-          await client.query(
-            `INSERT INTO crops (farmer_id, crop_name, sowing_date, irrigation_type)
-             VALUES ($1, $2, $3, $4)`,
-            [farmer.farmer_id, crop.crop_name, crop.sowing_date, crop.irrigation_type]
+          if (!crop.crop_name || !crop.crop_name.trim()) continue;
+          const trimmedName = crop.crop_name.trim();
+
+          // Check if crop with same name already exists for this farmer
+          const cropExists = await client.query(
+            `SELECT crop_id FROM crops WHERE farmer_id = $1 AND LOWER(crop_name) = LOWER($2)`,
+            [farmer.farmer_id, trimmedName]
           );
+
+          if (cropExists.rows.length === 0) {
+            const insRes = await client.query(
+              `INSERT INTO crops (farmer_id, crop_name, sowing_date, irrigation_type)
+               VALUES ($1, $2, $3, $4)
+               RETURNING *`,
+              [farmer.farmer_id, trimmedName, crop.sowing_date || new Date().toISOString().split('T')[0], crop.irrigation_type || 'rainfed']
+            );
+            newlyAddedCrops.push(insRes.rows[0]);
+          }
         }
       }
 
-      // Fetch all crops for this farmer
+      // Fetch all crops for this farmer (new and previously registered)
       const cropsResult = await client.query(
-        `SELECT * FROM crops WHERE farmer_id = $1 ORDER BY sowing_date DESC`,
+        `SELECT * FROM crops WHERE farmer_id = $1 ORDER BY sowing_date DESC, crop_name ASC`,
         [farmer.farmer_id]
       );
 
       await client.query('COMMIT');
+
+      // Populate initial mandi market prices for newly added crops (post-commit)
+      if (newlyAddedCrops.length > 0) {
+        for (const newCrop of newlyAddedCrops) {
+          try {
+            const priceData = await fetchMandiPrices(newCrop);
+            if (priceData) {
+              await pool.query(
+                `INSERT INTO market_prices (crop_id, mandi_name, price_date, price_per_quintal, trend)
+                 VALUES ($1, $2, $3, $4, $5)
+                 ON CONFLICT DO NOTHING`,
+                [newCrop.crop_id, priceData.mandi_name, priceData.price_date, priceData.price_per_quintal, priceData.trend]
+              );
+            }
+          } catch (mErr) {
+            console.warn('[CreateFarmer] Existing farmer market price ingest failed:', mErr.message);
+          }
+        }
+      }
+
       return res.status(200).json(response(true, {
         already_registered: true,
         farmer,
@@ -99,6 +133,42 @@ export async function createFarmer(req, res, next) {
     }
 
     await client.query('COMMIT');
+
+    // Populate initial mandi market prices for newly registered crops (post-commit)
+    if (insertedCrops.length > 0) {
+      for (const insCrop of insertedCrops) {
+        try {
+          const priceData = await fetchMandiPrices(insCrop);
+          if (priceData) {
+            await pool.query(
+              `INSERT INTO market_prices (crop_id, mandi_name, price_date, price_per_quintal, trend)
+               VALUES ($1, $2, $3, $4, $5)
+               ON CONFLICT DO NOTHING`,
+              [insCrop.crop_id, priceData.mandi_name, priceData.price_date, priceData.price_per_quintal, priceData.trend]
+            );
+          }
+        } catch (mErr) {
+          console.warn('[CreateFarmer] Initial market price ingest failed:', mErr.message);
+        }
+      }
+    }
+
+    // Populate initial weather data for this region (post-commit)
+    try {
+      const regionData = { region_id: regionId, village_name: region.village_name, district: region.district, state: region.state };
+      const wData = await fetchWeatherData(regionData);
+      if (wData) {
+        await pool.query(
+          `INSERT INTO weather_data (region_id, record_date, rainfall_mm, temperature_c, humidity_pct, source)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT DO NOTHING`,
+          [regionId, wData.record_date, wData.rainfall_mm, wData.temperature_c, wData.humidity_pct, wData.source]
+        );
+      }
+    } catch (wErr) {
+      console.warn('[CreateFarmer] Initial weather ingest failed:', wErr.message);
+    }
+
     res.status(201).json(response(true, {
       already_registered: false,
       farmer,
@@ -127,7 +197,16 @@ export async function getFarmerById(req, res, next) {
       [farmer_id]
     );
     if (!result.rows.length) throw new ApiError(404, 'Farmer not found');
-    res.json(response(true, result.rows[0]));
+
+    const cropsResult = await pool.query(
+      `SELECT * FROM crops WHERE farmer_id = $1 ORDER BY sowing_date DESC`,
+      [farmer_id]
+    );
+
+    res.json(response(true, {
+      ...result.rows[0],
+      crops: cropsResult.rows,
+    }));
   } catch (err) {
     next(err);
   }
