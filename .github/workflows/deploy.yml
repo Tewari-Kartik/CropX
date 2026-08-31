@@ -38,15 +38,15 @@ jobs:
         working-directory: ./ml-services/distress-engine
         run: |
           pip install -r requirements.txt
-          pytest tests/ -v
+          python -m pytest tests/ -v
 
       - name: Test Advisory Engine (HC)
         working-directory: ./ml-services/advisory-engine
         run: |
           pip install -r requirements.txt
-          pytest tests/ -v
+          python -m pytest tests/ -v
 
-  # ── 2. Deploy to AWS EC2 ───────────────────────────────────────────────────
+  # ── 2. Native OpenSSH Deployment to AWS EC2 ─────────────────────────────────
   deploy:
     name: Deploy to AWS EC2
     needs: validate-and-build
@@ -57,42 +57,61 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Deploy to AWS via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER || 'ubuntu' }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: 22
-          script: |
-            set -euxo pipefail
+      - name: Deploy via Native SSH
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER || 'ubuntu' }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          SERVER_ENV: ${{ secrets.SERVER_ENV }}
+          DOMAIN_NAME: ${{ secrets.DOMAIN_NAME || 'cropx.click' }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL || 'admin@cropx.click' }}
+        run: |
+          set -euo pipefail
 
+          # 1. Prepare SSH key and known_hosts
+          mkdir -p ~/.ssh
+          echo "$EC2_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+          # 2. Transfer and execute deployment commands on AWS EC2
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" "bash -s" << 'EOF'
+            set -euxo pipefail
             DEPLOY_DIR="/opt/cropx"
 
-            # 1. Clone repository if not present, otherwise pull latest main
+            # Clone repository if missing, or update
             if [ ! -d "$DEPLOY_DIR/.git" ]; then
-              echo "Cloning repository..."
+              echo "Cloning repository to $DEPLOY_DIR..."
               sudo git clone https://github.com/Tewari-Kartik/CropX.git "$DEPLOY_DIR"
-              sudo chown -R ubuntu:ubuntu "$DEPLOY_DIR"
+              sudo chown -R $(whoami):$(whoami) "$DEPLOY_DIR"
             fi
 
             cd "$DEPLOY_DIR"
             git fetch origin main
             git reset --hard origin/main
 
-            # 2. Inject production .env for backend
+            # Write environment variables
             mkdir -p server
-            echo "${{ secrets.SERVER_ENV }}" > server/.env
+            cat << 'ENVEOF' > server/.env
+          EOF
 
-            # 3. Build & launch production containers
+          # Inject the SERVER_ENV safely
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" "cat << 'ENVEOF' > /opt/cropx/server/.env
+$SERVER_ENV
+ENVEOF"
+
+          # Run containers and healthcheck
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" "bash -s" << 'EOF'
+            set -euxo pipefail
+            cd /opt/cropx
+
             chmod +x init-ssl.sh
-            ./init-ssl.sh "${{ secrets.DOMAIN_NAME || 'cropx.click' }}" "${{ secrets.ADMIN_EMAIL || 'admin@cropx.click' }}" 0 || true
+            ./init-ssl.sh "cropx.click" "admin@cropx.click" 0 || true
 
             docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
 
-            # 4. Clean up unused images to save disk space
             docker image prune -f
-
-            # 5. Verify running status
             docker compose -f docker-compose.prod.yml ps
+
             echo "=== Deployment to AWS Succeeded! ==="
+          EOF
