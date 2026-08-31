@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2, Loader2 } from "lucide-react";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { createFarmer, login, type CreateFarmerPayload } from "@/lib/api";
-import { saveSession, saveCropId } from "@/lib/auth";
+import { saveSession, saveCropId, saveCropName, saveCrops } from "@/lib/auth";
 
 interface CropEntry {
   crop_name: string;
@@ -74,9 +74,17 @@ export default function FarmerOnboarding() {
       const farmer = res.data.farmer;
       const crops = res.data.crops || [];
 
-      // Save first crop_id so AdvisoryView can use it
-      if (crops.length > 0 && crops[0].crop_id) {
-        saveCropId(crops[0].crop_id);
+      // Save crops and primary crop so Dashboard & AdvisoryView can use them
+      if (crops.length > 0) {
+        if (crops[0].crop_id) saveCropId(crops[0].crop_id);
+        if (crops[0].crop_name) saveCropName(crops[0].crop_name);
+        saveCrops(crops);
+      } else {
+        const submittedCrops = payload.crops;
+        if (submittedCrops.length > 0) {
+          saveCropName(submittedCrops[0].crop_name);
+          saveCrops(submittedCrops);
+        }
       }
 
       // Auto-login the newly registered farmer

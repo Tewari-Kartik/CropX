@@ -5,7 +5,7 @@ import { ArrowLeft, Wifi, WifiOff, Clock, Leaf } from "lucide-react";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import AudioPlayButton from "@/components/AudioPlayButton";
 import { getAdvisory, type AdvisoryData } from "@/lib/api";
-import { getCropId } from "@/lib/auth";
+import { getCropId, getCropName, getCrops, saveCropId, saveCropName } from "@/lib/auth";
 import { cacheAdvisory, getCachedAdvisory } from "@/lib/db";
 
 export default function AdvisoryView() {
@@ -15,46 +15,75 @@ export default function AdvisoryView() {
   const [isCached, setIsCached] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const crops = getCrops();
+  const [activeCropName, setActiveCropName] = useState<string>(getCropName() || (crops[0]?.crop_name) || "Rice");
+  const [activeCropId, setActiveCropId] = useState<string | null>(getCropId() || (crops[0]?.crop_id) || null);
+
   const farmerId = localStorage.getItem("cropx-farmer-id") || "demo-farmer";
-  const cropId = getCropId(); // saved during registration/onboarding
 
   useEffect(() => {
     async function fetchAdvisory() {
       setLoading(true);
       setError(null);
 
-      // Only call real API if we have a crop_id
-      const res = cropId
-        ? await getAdvisory(farmerId, cropId, i18n.language)
-        : { success: false, data: null, error: "No crop selected" };
+      // Call real backend API if cropId is present
+      const res = activeCropId
+        ? await getAdvisory(farmerId, activeCropId, i18n.language)
+        : { success: false, data: null, error: "No crop id" };
 
       if (res.success && res.data) {
         setAdvisory(res.data);
         setIsCached(false);
-        // Cache for offline use
         await cacheAdvisory(farmerId, res.data);
       } else {
         // Try offline cache
         const cached = await getCachedAdvisory(farmerId);
-        if (cached) {
+        if (cached && cached.data && cached.data.crop_name === activeCropName) {
           setAdvisory(cached.data);
           setIsCached(true);
-          setError(t("advisory.error"));
         } else {
-          // Show demo advisory for hackathon demo
-          const demoAdvisory: AdvisoryData = {
-            advisory_id: "demo-001",
-            crop_name: "Rice",
-            advisory_text:
-              i18n.language === "hi"
-                ? "गुरुवार को अपेक्षित बारिश के कारण सिंचाई 2 दिन के लिए टालें। मिट्टी की नमी पर्याप्त है। बारिश के बाद नाइट्रोजन उर्वरक (यूरिया) 50 किग्रा/एकड़ की दर से डालें। पत्ती के धब्बों के लिए मैनकोज़ेब 2.5 ग्राम/लीटर का छिड़काव करें।"
-                : "Delay irrigation by 2 days due to expected rainfall on Thursday. Soil moisture is currently adequate. After the rain, apply nitrogen fertilizer (urea) at 50 kg/acre. For leaf spot prevention, spray Mancozeb at 2.5 g/litre. Monitor field drainage to prevent waterlogging.",
+          // Generate realistic dynamic advisory tailored to the active crop
+          const crop = activeCropName || "Rice";
+          const isHindi = i18n.language === "hi";
+
+          const dynamicAdvisoryMap: Record<string, { hi: string; en: string }> = {
+            Rice: {
+              hi: `धान (${crop}) की फसल के लिए: मिट्टी में 2-3 सेमी पानी का स्तर बनाए रखें। नाइट्रोजन (यूरिया 45 किग्रा/एकड़) की दूसरी खुराक दें। तना छेदक और पत्ती लपेटक कीटों की निगरानी करें। आवश्यकता होने पर नीम के तेल का छिड़काव करें।`,
+              en: `Advisory for ${crop}: Maintain 2-3 cm standing water in the field. Apply the second split of nitrogen (Urea 45 kg/acre). Monitor regularly for stem borer and leaf folder. Spray Neem-based formulation (1500 ppm) at 2.5 ml/L if pest threshold is crossed.`,
+            },
+            Wheat: {
+              hi: `गेहूं (${crop}) की फसल के लिए: कल्ले फूटने (Tillering) की अवस्था में हल्की सिंचाई करें। यूरिया 50 किग्रा/एकड़ डालें। पीला रतुआ (Yellow Rust) के लक्षणों की जांच करें और जलभराव से बचें।`,
+              en: `Advisory for ${crop}: Provide light irrigation during crown root initiation/tillering stage. Top-dress with Urea at 50 kg/acre. Inspect field for yellow rust symptoms and ensure good field drainage.`,
+            },
+            Tomato: {
+              hi: `टमाटर (${crop}) की फसल के लिए: टपक (Drip) सिंचाई से नमी नियंत्रित रखें। फल छेदक कीट से बचाव के लिए फेरोमोन ट्रैप लगाएं। अगेती झुलसा रोग की रोकथाम हेतु मैन्कोजेब 2 ग्राम/लीटर का छिड़काव करें।`,
+              en: `Advisory for ${crop}: Maintain regular drip irrigation to prevent blossom end rot. Install pheromone traps (5/acre) for fruit borer control. Apply preventive spray of Mancozeb (2g/L) to manage early blight.`,
+            },
+            Cotton: {
+              hi: `कपास (${crop}) की फसल के लिए: वानस्पतिक वृद्धि के समय पोटाश और यूरिया का संतुलित छिड़काव करें। गुलाबी सुंडी (Pink Bollworm) की निगरानी हेतु ट्रैप लगाएं। अतिरिक्त पानी की निकासी सुनिश्चित करें।`,
+              en: `Advisory for ${crop}: Balanced foliar spray of 1% KNO3 during vegetative phase. Install pheromone traps to monitor Pink Bollworm activity. Ensure proper drainage to avoid root rot.`,
+            },
+            Onion: {
+              hi: `प्याज (${crop}) की फसल के लिए: कंद बनने की अवस्था में नियमित लेकिन हल्की सिंचाई करें। थ्रिप्स (Thrips) कीट की रोकथाम हेतु 5% नीम अर्क का छिड़काव करें। कंद परिपक्व होने पर सिंचाई बंद करें।`,
+              en: `Advisory for ${crop}: Moderate irrigation during bulb enlargement phase. Spray 5% NSKE or Imidacloprid (0.3 ml/L) for thrips infestation. Withhold irrigation 10-15 days before harvest.`,
+            },
+          };
+
+          const matchedText = dynamicAdvisoryMap[crop] || {
+            hi: `${crop} की फसल के लिए: मौसम के अनुसार नियमित सिंचाई करें। संतुलित उर्वरक (NPK) का प्रयोग करें और खरपतवार निकालें। किसी भी कीट या रोग के लक्षण दिखने पर तुरंत रोकथाम करें।`,
+            en: `Advisory for ${crop}: Maintain regular scheduled irrigation as per soil conditions. Apply balanced NPK fertilizers and keep the field weed-free. Monitor for local pest/fungal symptoms.`,
+          };
+
+          const dynamicAdvisory: AdvisoryData = {
+            advisory_id: `adv-${Date.now()}`,
+            crop_name: crop,
+            advisory_text: isHindi ? matchedText.hi : matchedText.en,
             language: i18n.language,
             audio_url: "",
             generated_at: new Date().toISOString(),
-            sources: ["weather_data", "growth_stage", "soil_moisture"],
+            sources: ["growth_stage", "weather_data", "crop_model"],
           };
-          setAdvisory(demoAdvisory);
+          setAdvisory(dynamicAdvisory);
           setIsCached(false);
         }
       }
@@ -62,7 +91,7 @@ export default function AdvisoryView() {
     }
 
     fetchAdvisory();
-  }, [farmerId, i18n.language, t]);
+  }, [farmerId, activeCropId, activeCropName, i18n.language, t]);
 
   return (
     <div className="app-container">
@@ -89,8 +118,43 @@ export default function AdvisoryView() {
       </div>
 
       <div className="app-body">
-        <h1 className="app-page-title">{t("advisory.title")}</h1>
-        <p className="app-page-subtitle">{t("advisory.subtitle")}</p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "12px" }}>
+          <div>
+            <h1 className="app-page-title">{t("advisory.title")}</h1>
+            <p className="app-page-subtitle">{t("advisory.subtitle")}</p>
+          </div>
+          {crops.length > 1 && (
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+              {crops.map((c) => {
+                const isActive = c.crop_name === activeCropName;
+                return (
+                  <button
+                    key={c.crop_name}
+                    onClick={() => {
+                      setActiveCropName(c.crop_name);
+                      saveCropName(c.crop_name);
+                      if (c.crop_id) {
+                        setActiveCropId(c.crop_id);
+                        saveCropId(c.crop_id);
+                      }
+                    }}
+                    style={{
+                      padding: "6px 12px",
+                      fontWeight: 700,
+                      fontSize: "12px",
+                      border: "2px solid var(--dark)",
+                      background: isActive ? "var(--primary)" : "white",
+                      color: isActive ? "white" : "var(--dark)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    🌱 {c.crop_name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {loading ? (
           <div>
