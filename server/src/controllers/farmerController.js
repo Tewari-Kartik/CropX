@@ -2,6 +2,7 @@ import pool from '../db/pool.js';
 import { callAdvisoryEngine } from '../services/advisoryService.js';
 import { callDistressEngine } from '../services/distressService.js';
 import { fetchWeatherData, fetchMandiPrices } from '../services/externalApiService.js';
+import { processFarmerDistressAndAlert } from '../services/alertService.js';
 import { ApiError } from '../utils/ApiError.js';
 import { response } from '../utils/response.js';
 
@@ -9,6 +10,33 @@ import { response } from '../utils/response.js';
  * POST /api/v1/farmers
  * Register a new farmer with profile, region, and crop info.
  */
+export async function getAllFarmers(req, res, next) {
+  try {
+    const { page = 1, limit = 50 } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+    const countRes = await pool.query(`SELECT COUNT(*) FROM farmers`);
+    const total = parseInt(countRes.rows[0].count, 10);
+    
+    const farmersRes = await pool.query(
+      `SELECT f.*, r.village_name, r.district, r.state
+       FROM farmers f
+       JOIN regions r ON f.region_id = r.region_id
+       ORDER BY f.created_at DESC
+       LIMIT $1 OFFSET $2`,
+      [Number(limit), offset]
+    );
+    
+    res.json(response(true, {
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      farmers: farmersRes.rows,
+    }));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function createFarmer(req, res, next) {
   const { full_name, phone_number, preferred_language, region, land_size_acres, crops } = req.body;
   const client = await pool.connect();
@@ -78,6 +106,11 @@ export async function createFarmer(req, res, next) {
           }
         }
       }
+
+      // Automatically evaluate risk and send SMS alert immediately if risk is detected
+      processFarmerDistressAndAlert(farmer.farmer_id).catch((aErr) => {
+        console.warn('[CreateFarmer] Immediate distress alert processing failed:', aErr.message);
+      });
 
       return res.status(200).json(response(true, {
         already_registered: true,
@@ -168,6 +201,11 @@ export async function createFarmer(req, res, next) {
     } catch (wErr) {
       console.warn('[CreateFarmer] Initial weather ingest failed:', wErr.message);
     }
+
+    // Automatically evaluate risk and send SMS alert immediately if risk is detected
+    processFarmerDistressAndAlert(farmer.farmer_id).catch((aErr) => {
+      console.warn('[CreateFarmer] Immediate distress alert processing failed:', aErr.message);
+    });
 
     res.status(201).json(response(true, {
       already_registered: false,
