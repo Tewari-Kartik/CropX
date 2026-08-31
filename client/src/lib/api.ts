@@ -209,3 +209,56 @@ export function getHighRiskAlerts(params: {
   const query = qs.toString();
   return apiFetch<HighRiskAlertsData>(`/alerts/high-risk${query ? `?${query}` : ""}`);
 }
+
+// SMS Log types
+export interface SmsLogItem {
+  alert_id: string;
+  farmer_id: string;
+  farmer_name: string;
+  phone_number: string;
+  village_name: string;
+  alert_type: "distress" | "manual" | string;
+  status: "pending" | "sent" | "acknowledged" | string;
+  created_at: string;
+  risk_score: number | null;
+  risk_band: "low" | "medium" | "high" | "critical" | null;
+}
+
+export interface SmsLogData {
+  total: number;
+  page: number;
+  limit: number;
+  logs: SmsLogItem[];
+}
+
+export interface SendSmsResult {
+  sent_to: string;
+  farmer_name: string;
+  message: string;
+  textbee_result: unknown;
+}
+
+/** POST /api/v1/alerts/send-sms — manually trigger an ML-generated SMS */
+export function sendSmsAlert(farmerId: string, message?: string) {
+  return apiFetch<SendSmsResult>("/alerts/send-sms", {
+    method: "POST",
+    body: JSON.stringify({ farmer_id: farmerId, message }),
+  });
+}
+
+/** GET /api/v1/alerts/sms-log — full SMS delivery history */
+export function getSmsLog(params?: {
+  status?: string;
+  farmer_id?: string;
+  page?: number;
+  limit?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  if (params?.farmer_id) qs.set("farmer_id", params.farmer_id);
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.limit) qs.set("limit", String(params.limit));
+  const query = qs.toString();
+  return apiFetch<SmsLogData>(`/alerts/sms-log${query ? `?${query}` : ""}`);
+}
+

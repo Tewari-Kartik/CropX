@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './config.js';
 import app from './app.js';
 import { connectDB } from './db/pool.js';
 import { startAlertCron } from './services/alertService.js';
