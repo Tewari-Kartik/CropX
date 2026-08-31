@@ -1,19 +1,24 @@
 #!/bin/bash
 set -e
 
-DOMAIN=${1:-"cropx.click"}
+DOMAIN=${1:-"3-109-69-185.sslip.io"}
 EMAIL=${2:-"admin@cropx.click"}
-STAGING=${3:-0} # Set to 1 if testing to avoid Let's Encrypt rate limits
+STAGING=${3:-0}
 
-echo "=== Initializing SSL for domain: $DOMAIN ($EMAIL) ==="
+echo "=== SSL Management for domain: $DOMAIN ($EMAIL) ==="
 
 RSA_KEY_SIZE=4096
 DATA_PATH="./certbot"
 
-if [ -d "$DATA_PATH/conf/live/$DOMAIN" ]; then
-  echo "Existing certificate found for $DOMAIN. Skipping dummy cert generation."
+# Check if we already have a valid Let's Encrypt cert in any live folder
+if [ -f "$DATA_PATH/conf/live/$DOMAIN/fullchain.pem" ]; then
+  echo "Found existing Let's Encrypt certificate for $DOMAIN. Activating in Nginx..."
+  mkdir -p "$DATA_PATH/conf/live/cropx"
+  cp -rfL "$DATA_PATH/conf/live/$DOMAIN/." "$DATA_PATH/conf/live/cropx/"
+elif [ -f "$DATA_PATH/conf/live/cropx/fullchain.pem" ] && ! openssl x509 -in "$DATA_PATH/conf/live/cropx/fullchain.pem" -noout -subject | grep -q "localhost"; then
+  echo "Found existing valid non-dummy certificate. Preserving..."
 else
-  echo "Generating dummy certificate for initial Nginx startup..."
+  echo "Generating temporary dummy certificate for initial Nginx startup..."
   mkdir -p "$DATA_PATH/conf/live/cropx"
   mkdir -p "$DATA_PATH/www"
 
@@ -23,11 +28,12 @@ else
     -subj "/CN=localhost"
 fi
 
-echo "Starting Nginx reverse proxy..."
-docker compose -f docker-compose.prod.yml up --force-recreate -d nginx
+echo "Ensuring Nginx is running..."
+docker compose -f docker-compose.prod.yml up -d nginx
 
-if [ "$DOMAIN" != "localhost" ] && [ "$DOMAIN" != "cropx.click" ]; then
-  echo "Requesting Let's Encrypt certificate for $DOMAIN..."
+# If we don't have a real Let's Encrypt certificate for $DOMAIN, request one
+if [ "$DOMAIN" != "localhost" ] && [ ! -f "$DATA_PATH/conf/live/$DOMAIN/fullchain.pem" ]; then
+  echo "Requesting new Let's Encrypt certificate for $DOMAIN..."
   
   STAGING_ARG=""
   if [ "$STAGING" != "0" ]; then
@@ -41,13 +47,16 @@ if [ "$DOMAIN" != "localhost" ] && [ "$DOMAIN" != "cropx.click" ]; then
       -d $DOMAIN \
       --rsa-key-size $RSA_KEY_SIZE \
       --agree-tos \
-      --force-renewal --non-interactive" certbot
+      --force-renewal --non-interactive" certbot || true
 
-  echo "Copying live certificate into active Nginx path..."
+  if [ -f "$DATA_PATH/conf/live/$DOMAIN/fullchain.pem" ]; then
+    echo "Copying live certificate into active Nginx path..."
+    cp -rfL "$DATA_PATH/conf/live/$DOMAIN/." "$DATA_PATH/conf/live/cropx/"
+    docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+  fi
+elif [ -f "$DATA_PATH/conf/live/$DOMAIN/fullchain.pem" ]; then
   cp -rfL "$DATA_PATH/conf/live/$DOMAIN/." "$DATA_PATH/conf/live/cropx/"
-
-  echo "Reloading Nginx with new certificate..."
-  docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
+  docker compose -f docker-compose.prod.yml exec nginx nginx -s reload || true
 fi
 
-echo "=== SSL Setup Completed ==="
+echo "=== SSL Setup Completed for $DOMAIN ==="
