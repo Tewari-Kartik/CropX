@@ -14,6 +14,7 @@ import {
   Cloud,
   Droplets,
   FileText,
+  Camera,
 } from "lucide-react";
 import { YieldChart } from "@/components/dashboard/yield-chart";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
@@ -213,6 +214,14 @@ export default function FarmerDashboard() {
             <p className="dash-sub">{t("dashboard.subtitle")}</p>
           </div>
           <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+            <Link
+              to="/farmer/diagnose"
+              className="btn-cta"
+              style={{ background: "var(--secondary)", color: "var(--dark)", fontSize: "12px" }}
+            >
+              <Camera size={16} strokeWidth={2.5} style={{ marginRight: "6px" }} />
+              Snap & Diagnose
+            </Link>
             <Link
               to={activeCrop.crop_id ? `/farmer/advisory?crop_id=${activeCrop.crop_id}` : "/farmer/advisory"}
               className="btn-cta"
