@@ -267,7 +267,7 @@ export async function triggerDistressScore(req, res, next) {
     const score = scoreResult.rows[0];
 
     // Create alert if high/critical
-    if (['high', 'critical'].includes(score.risk_band)) {
+    if (['medium', 'high', 'critical'].includes(score.risk_band)) {
       await pool.query(
         `INSERT INTO alerts (farmer_id, score_id, alert_type, channel, status)
          VALUES ($1, $2, 'distress', 'sms', 'pending')
