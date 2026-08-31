@@ -98,19 +98,19 @@ export default function LandingPage() {
           </div>
           <div className="menu-grid">
             {/* Feature 1 */}
-            <div className="menu-card">
+            <Link to="/diagnose" className="menu-card" style={{ textDecoration: "none", color: "inherit", cursor: "pointer", display: "block" }}>
               <span className="menu-tag">AI Powered</span>
-              <div className="card-visual" style={{ background: "var(--primary)" }}>
+              <div className="card-visual" style={{ background: "var(--primary)", transition: "transform 0.2s ease" }}>
                 <ScanLine size={90} strokeWidth={1.25} aria-hidden="true" />
               </div>
               <div className="menu-card-body">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                  <h3>{t("features.snapTitle")}</h3>
-                  <span className="price">AI</span>
+                  <h3 style={{ color: "var(--dark)" }}>{t("features.snapTitle")}</h3>
+                  <span className="price">AI TRY →</span>
                 </div>
                 <p style={{ fontSize: "14px", color: "#666" }}>{t("features.snapDesc")}</p>
               </div>
-            </div>
+            </Link>
 
             {/* Feature 2 */}
             <div className="menu-card">
