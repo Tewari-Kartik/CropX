@@ -116,10 +116,10 @@ def analyse_weather(
 
 # ── Crop-stage analysis ───────────────────────────────────────────────────────
 
-def infer_stage_from_sowing_date(sowing_date_val) -> str:
+def infer_stage_from_sowing_date(sowing_date_val) -> str | None:
     """Infer growth stage based on days elapsed since sowing date."""
     if not sowing_date_val:
-        return "vegetative"
+        return None
     try:
         from datetime import date, datetime
         if isinstance(sowing_date_val, str):
@@ -127,7 +127,7 @@ def infer_stage_from_sowing_date(sowing_date_val) -> str:
         elif isinstance(sowing_date_val, date):
             s_date = sowing_date_val
         else:
-            return "vegetative"
+            return None
         
         days = (date.today() - s_date).days
         if days < 0:
@@ -141,7 +141,7 @@ def infer_stage_from_sowing_date(sowing_date_val) -> str:
         else:
             return "harvesting"
     except Exception:
-        return "vegetative"
+        return None
 
 
 def analyse_crop_stage(crop: CropInfo, avg_temp: float | None = None) -> AdvisoryResult:
@@ -150,13 +150,13 @@ def analyse_crop_stage(crop: CropInfo, avg_temp: float | None = None) -> Advisor
     fertilizer timing, pest watch, harvest readiness, etc.
     """
     result = AdvisoryResult()
-    stage = (crop.growth_stage or "").lower()
+    stage = (crop.growth_stage or "").strip().lower()
     
     if not stage and crop.sowing_date:
-        stage = infer_stage_from_sowing_date(crop.sowing_date)
+        stage = infer_stage_from_sowing_date(crop.sowing_date) or ""
 
     if not stage:
-        stage = "vegetative"
+        return result
 
     result.sources.add("growth_stage")
     crop_name = crop.crop_name
