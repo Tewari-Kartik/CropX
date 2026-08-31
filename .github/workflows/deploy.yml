@@ -102,7 +102,7 @@ jobs:
             mv -f /tmp/prod_server.env server/.env
 
             chmod +x init-ssl.sh
-            ./init-ssl.sh "cropx.click" "admin@cropx.click" 0 || true
+            ./init-ssl.sh "3-109-69-185.sslip.io" "admin@cropx.click" 0 || true
 
             docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
             docker image prune -f
