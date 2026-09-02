@@ -66,7 +66,8 @@ def rule_based_score(fv: FeatureVector) -> float:
     """
     Compute distress risk using a weighted linear combination.
     Each raw feature is first normalized to a 0–100 scale, then multiplied
-    by its weight.  The final score is clamped to [0, 100].
+    by its weight. Active weights are scaled to support farmers with or without
+    formal bank loans. The final score is clamped to [0, 100].
     """
     components = [
         WEIGHT_RAINFALL_DEFICIT   * _normalize(fv.rainfall_deficit_pct, 100.0),
@@ -82,7 +83,22 @@ def rule_based_score(fv: FeatureVector) -> float:
         WEIGHT_LOAN_UTILIZATION   * _normalize(fv.loan_utilization_ratio, 1.0),
     ]
 
-    raw = sum(components)
+    has_loans = (fv.total_loan_exposure > 0 or fv.loan_overdue_days > 0 or fv.overdue_loan_count > 0)
+    if has_loans:
+        active_weight = 1.0
+    else:
+        # Sum of weather (0.45) + market (0.25) weights = 0.70
+        active_weight = (
+            WEIGHT_RAINFALL_DEFICIT
+            + WEIGHT_DROUGHT_STREAK
+            + WEIGHT_TEMP_EXTREME
+            + WEIGHT_HUMIDITY_STRESS
+            + WEIGHT_MARKET_PRICE_DROP
+            + WEIGHT_PRICE_VOLATILITY
+            + WEIGHT_NEGATIVE_TREND
+        )
+
+    raw = sum(components) / max(0.1, active_weight)
     return round(_clamp(raw), 1)
 
 
