@@ -216,6 +216,8 @@ export default function FarmerOnboarding() {
             <div className="form-group">
               <label className="form-label">{t("onboarding.fullName")}</label>
               <input
+                id="onboarding-full-name"
+                name="fullName"
                 className="form-input"
                 type="text"
                 value={fullName}
@@ -226,6 +228,8 @@ export default function FarmerOnboarding() {
             <div className="form-group">
               <label className="form-label">{t("onboarding.phone")}</label>
               <input
+                id="onboarding-phone"
+                name="phone"
                 className="form-input"
                 type="tel"
                 value={phone}
@@ -236,6 +240,8 @@ export default function FarmerOnboarding() {
             <div className="form-group">
               <label className="form-label">{t("onboarding.language")}</label>
               <select
+                id="onboarding-preferred-lang"
+                name="preferredLang"
                 className="form-select"
                 value={preferredLang}
                 onChange={(e) => setPreferredLang(e.target.value)}
@@ -253,6 +259,8 @@ export default function FarmerOnboarding() {
             <div className="form-group">
               <label className="form-label">{t("onboarding.village")}</label>
               <input
+                id="onboarding-village"
+                name="village"
                 className="form-input"
                 type="text"
                 value={village}
@@ -263,6 +271,8 @@ export default function FarmerOnboarding() {
             <div className="form-group">
               <label className="form-label">{t("onboarding.district")}</label>
               <input
+                id="onboarding-district"
+                name="district"
                 className="form-input"
                 type="text"
                 value={district}
@@ -273,6 +283,8 @@ export default function FarmerOnboarding() {
             <div className="form-group">
               <label className="form-label">{t("onboarding.state")}</label>
               <input
+                id="onboarding-state"
+                name="state"
                 className="form-input"
                 type="text"
                 value={state}
@@ -283,6 +295,8 @@ export default function FarmerOnboarding() {
             <div className="form-group">
               <label className="form-label">{t("onboarding.landSize")}</label>
               <input
+                id="onboarding-land-size"
+                name="landSize"
                 className="form-input"
                 type="number"
                 step="0.1"
@@ -335,6 +349,8 @@ export default function FarmerOnboarding() {
                 <div className="form-group">
                   <label className="form-label">{t("onboarding.cropName")}</label>
                   <input
+                    id={`crop-name-${i}`}
+                    name={`cropName_${i}`}
                     className="form-input"
                     type="text"
                     value={crop.crop_name}
@@ -345,6 +361,8 @@ export default function FarmerOnboarding() {
                 <div className="form-group">
                   <label className="form-label">{t("onboarding.sowingDate")}</label>
                   <input
+                    id={`crop-sowing-date-${i}`}
+                    name={`sowingDate_${i}`}
                     className="form-input"
                     type="date"
                     value={crop.sowing_date}
@@ -354,6 +372,8 @@ export default function FarmerOnboarding() {
                 <div className="form-group">
                   <label className="form-label">{t("onboarding.irrigationType")}</label>
                   <select
+                    id={`crop-irrigation-${i}`}
+                    name={`irrigationType_${i}`}
                     className="form-select"
                     value={crop.irrigation_type}
                     onChange={(e) => updateCrop(i, "irrigation_type", e.target.value)}

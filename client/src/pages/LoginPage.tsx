@@ -100,6 +100,8 @@ export default function LoginPage() {
           <div className="form-group">
             <label className="form-label">{t("login.phone")}</label>
             <input
+              id="farmer-phone"
+              name="phone"
               className="form-input"
               type="tel"
               value={phoneNumber}

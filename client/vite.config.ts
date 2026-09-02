@@ -10,6 +10,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
+      manifestFilename: "manifest.json",
       includeAssets: [
         "apple-icon.png",
         "icon.svg",

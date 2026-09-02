@@ -267,6 +267,8 @@ export default function OfficerDashboard() {
             {/* Filters */}
             <div className="filters-bar">
               <select
+                id="filter-region"
+                name="filterRegion"
                 className="form-select"
                 style={{ maxWidth: "220px", minHeight: "48px" }}
                 value={filterRegion}
@@ -279,6 +281,8 @@ export default function OfficerDashboard() {
               </select>
 
               <select
+                id="filter-status"
+                name="filterStatus"
                 className="form-select"
                 style={{ maxWidth: "220px", minHeight: "48px" }}
                 value={filterStatus}
