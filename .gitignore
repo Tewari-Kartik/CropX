@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+*.log
+*.pem
+*.rsa
+*.pub
+route53_record.json
+deploy_remote.sh
+infra/terraform/cropx_rsa*
+infra/terraform/*.tfstate*

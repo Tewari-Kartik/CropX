@@ -5,7 +5,7 @@ import { ArrowLeft, Wifi, WifiOff, Clock, Leaf } from "lucide-react";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import AudioPlayButton from "@/components/AudioPlayButton";
 import { getAdvisory, getFarmerById, type AdvisoryData } from "@/lib/api";
-import { getCropId, saveCropId } from "@/lib/auth";
+import { getCropId, saveCropId, getCrops, getCropName } from "@/lib/auth";
 import { cacheAdvisory, getCachedAdvisory } from "@/lib/db";
 
 interface CropOption {
@@ -31,9 +31,23 @@ export default function AdvisoryView() {
       setError(null);
 
       let chosenCropId = searchParams.get("crop_id") || activeCropId || getCropId() || "";
+      const storedCrops = getCrops();
+      const storedCropName = getCropName() || "Maize";
 
-      // Fetch farmer profile to get all registered crops
-      if (farmerId && farmerId !== "demo-farmer") {
+      // Seed crops list from stored session first
+      if (storedCrops.length > 0) {
+        const list: CropOption[] = storedCrops.map((c, idx) => ({
+          crop_id: c.crop_id || `crop-stored-${idx}`,
+          crop_name: c.crop_name,
+        }));
+        setCropsList(list);
+        if (!chosenCropId || !list.some((c) => c.crop_id === chosenCropId)) {
+          chosenCropId = list[0].crop_id;
+        }
+      }
+
+      // Fetch farmer profile to get all registered DB crops if available
+      if (farmerId && farmerId !== "demo-farmer" && !farmerId.startsWith("f-demo-")) {
         const profile = await getFarmerById(farmerId);
         if (profile.success && profile.data?.crops && profile.data.crops.length > 0) {
           const list: CropOption[] = profile.data.crops.map((c) => ({
@@ -42,11 +56,14 @@ export default function AdvisoryView() {
           }));
           setCropsList(list);
 
-          // If no specific crop chosen yet, default to first registered crop
           if (!chosenCropId || !list.some((c) => c.crop_id === chosenCropId)) {
             chosenCropId = list[0].crop_id;
           }
         }
+      }
+
+      if (!chosenCropId) {
+        chosenCropId = "crop-local-0";
       }
 
       setActiveCropId(chosenCropId);
@@ -55,7 +72,7 @@ export default function AdvisoryView() {
       }
 
       // Fetch AI advisory for chosen crop
-      const res = chosenCropId
+      const res = chosenCropId && !chosenCropId.startsWith("crop-")
         ? await getAdvisory(farmerId, chosenCropId, i18n.language)
         : { success: false, data: null, error: "No crop selected" };
 
@@ -71,10 +88,21 @@ export default function AdvisoryView() {
           setIsCached(true);
         } else {
           // Generate realistic dynamic advisory tailored to the active crop
-          const crop = cropsList.find((c) => c.crop_id === chosenCropId)?.crop_name || "Rice";
+          const crop =
+            cropsList.find((c) => c.crop_id === chosenCropId)?.crop_name ||
+            storedCropName ||
+            "Maize";
           const isHindi = i18n.language === "hi";
 
           const dynamicAdvisoryMap: Record<string, { hi: string; en: string }> = {
+            Maize: {
+              hi: `मक्का (${crop}) की फसल के लिए: वानस्पतिक वृद्धि और कल्ले निकलने के दौरान फॉल आर्मीवर्म (Fall Armyworm) कीट की नियमित निगरानी करें। तसली (Tasseling) व भुट्टा बनने की अवस्था में खेत में उचित नमी बनाए रखें। नाइट्रोजन की दूसरी खुराक (यूरिया 40 किग्रा/एकड़) डालें।`,
+              en: `Advisory for ${crop}: Closely inspect whorls for Fall Armyworm infestation during vegetative stage. Maintain adequate soil moisture during critical tasseling and silking stages. Top-dress with Urea at 40 kg/acre.`,
+            },
+            Corn: {
+              hi: `मक्का (${crop}) की फसल के लिए: वानस्पतिक वृद्धि और कल्ले निकलने के दौरान फॉल आर्मीवर्म (Fall Armyworm) कीट की नियमित निगरानी करें। तसली (Tasseling) व भुट्टा बनने की अवस्था में खेत में उचित नमी बनाए रखें। नाइट्रोजन की दूसरी खुराक (यूरिया 40 किग्रा/एकड़) डालें।`,
+              en: `Advisory for ${crop}: Closely inspect whorls for Fall Armyworm infestation during vegetative stage. Maintain adequate soil moisture during critical tasseling and silking stages. Top-dress with Urea at 40 kg/acre.`,
+            },
             Rice: {
               hi: `धान (${crop}) की फसल के लिए: मिट्टी में 2-3 सेमी पानी का स्तर बनाए रखें। नाइट्रोजन (यूरिया 45 किग्रा/एकड़) की दूसरी खुराक दें। तना छेदक और पत्ती लपेटक कीटों की निगरानी करें। आवश्यकता होने पर नीम के तेल का छिड़काव करें।`,
               en: `Advisory for ${crop}: Maintain 2-3 cm standing water in the field. Apply the second split of nitrogen (Urea 45 kg/acre). Monitor regularly for stem borer and leaf folder. Spray Neem-based formulation (1500 ppm) at 2.5 ml/L if pest threshold is crossed.`,
@@ -94,6 +122,14 @@ export default function AdvisoryView() {
             Onion: {
               hi: `प्याज (${crop}) की फसल के लिए: कंद बनने की अवस्था में नियमित लेकिन हल्की सिंचाई करें। थ्रिप्स (Thrips) कीट की रोकथाम हेतु 5% नीम अर्क का छिड़काव करें। कंद परिपक्व होने पर सिंचाई बंद करें।`,
               en: `Advisory for ${crop}: Moderate irrigation during bulb enlargement phase. Spray 5% NSKE or Imidacloprid (0.3 ml/L) for thrips infestation. Withhold irrigation 10-15 days before harvest.`,
+            },
+            Soybean: {
+              hi: `सोयाबीन (${crop}) की फसल के लिए: फूल और फली बनने के समय जलभराव से बचें लेकिन नमी बनाए रखें। गर्डल बीटल और सेमीलूपर कीटों की निगरानी करें।`,
+              en: `Advisory for ${crop}: Maintain good field drainage while avoiding drought during flowering and pod development. Monitor for girdle beetle and semilooper pests.`,
+            },
+            Mustard: {
+              hi: `सरसों (${crop}) की फसल के लिए: फूल खिलने की अवस्था में हल्की सिंचाई करें। एफिड्स (माहू) कीट के प्रकोप पर नजर रखें और 5% नीम तेल या इमिडाक्लोप्रिड का छिड़काव करें।`,
+              en: `Advisory for ${crop}: Provide light irrigation at flowering and pod formation stages. Inspect under leaves for aphid colonies and spray 5% neem extract or imidacloprid if required.`,
             },
           };
 

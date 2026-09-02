@@ -1,0 +1,27 @@
+{
+  "short_name": "CropX",
+  "name": "CropX — FARM*PILOT Smart Agriculture",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    },
+    {
+      "src": "/icon-light-32x32.png",
+      "type": "image/png",
+      "sizes": "32x32"
+    },
+    {
+      "src": "/apple-icon.png",
+      "type": "image/png",
+      "sizes": "180x180"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0d1b11",
+  "theme_color": "#2e7d32",
+  "display": "standalone",
+  "scope": "/",
+  "description": "AI-powered smart farming platform with leaf pathology scanner, stage-specific crop advisories, and distress early warning system."
+}

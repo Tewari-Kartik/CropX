@@ -24,19 +24,100 @@ import {
   getMarketPricesByCrop,
   getAdvisory,
 } from "@/lib/api";
-import { getFarmerId, getFarmerName, saveCropId } from "@/lib/auth";
+import {
+  getFarmerId,
+  getFarmerName,
+  saveCropId,
+  saveCropName,
+  getCrops,
+  getCropName,
+  getCropId,
+} from "@/lib/auth";
 
-const defaultPrices = [
-  { crop: "Wheat", market: "Azadpur Mandi", value: "₹2,340", trend: "up", change: "+4.2%" },
-  { crop: "Rice (Basmati)", market: "Karnal Mandi", value: "₹3,880", trend: "up", change: "+1.8%" },
-  { crop: "Onion", market: "Nashik Mandi", value: "₹1,420", trend: "down", change: "-3.1%" },
-  { crop: "Tomato", market: "Kolar Mandi", value: "₹1,650", trend: "up", change: "+6.5%" },
-  { crop: "Cotton", market: "Rajkot Mandi", value: "₹6,240", trend: "down", change: "-0.9%" },
-];
+const cropPriceMap: Record<string, { price: string; market: string; trend: "up" | "down" | "stable"; change: string }> = {
+  maize: { price: "₹2,150", market: "Davanagere Mandi", trend: "up", change: "+3.2%" },
+  corn: { price: "₹2,150", market: "Davanagere Mandi", trend: "up", change: "+3.2%" },
+  wheat: { price: "₹2,340", market: "Azadpur Mandi", trend: "up", change: "+4.2%" },
+  rice: { price: "₹3,880", market: "Karnal Mandi", trend: "up", change: "+1.8%" },
+  paddy: { price: "₹2,180", market: "Burdwan Mandi", trend: "up", change: "+2.1%" },
+  onion: { price: "₹1,420", market: "Nashik Mandi", trend: "down", change: "-3.1%" },
+  tomato: { price: "₹1,650", market: "Kolar Mandi", trend: "up", change: "+6.5%" },
+  cotton: { price: "₹6,240", market: "Rajkot Mandi", trend: "down", change: "-0.9%" },
+  soybean: { price: "₹4,600", market: "Indore Mandi", trend: "up", change: "+2.4%" },
+  mustard: { price: "₹5,450", market: "Jaipur Mandi", trend: "down", change: "-1.1%" },
+  sugarcane: { price: "₹350", market: "Muzaffarnagar Mandi", trend: "up", change: "+1.0%" },
+  potato: { price: "₹1,200", market: "Agra Mandi", trend: "down", change: "-2.5%" },
+  bajra: { price: "₹2,350", market: "Alwar Mandi", trend: "up", change: "+1.9%" },
+  jowar: { price: "₹3,180", market: "Solapur Mandi", trend: "stable", change: "0.0%" },
+  gram: { price: "₹5,800", market: "Bhopal Mandi", trend: "up", change: "+3.0%" },
+  chana: { price: "₹5,800", market: "Bhopal Mandi", trend: "up", change: "+3.0%" },
+};
+
+function getPriceForCrop(cropName: string) {
+  const lower = (cropName || "").toLowerCase().trim();
+  for (const [k, v] of Object.entries(cropPriceMap)) {
+    if (lower.includes(k)) return v;
+  }
+  return { price: "₹2,150", market: "Regional Mandi", trend: "up" as const, change: "+2.5%" };
+}
+
+function getDefaultTasksForCrop(cropName: string, lang = "en") {
+  const lower = (cropName || "").toLowerCase().trim();
+  const isHi = lang === "hi";
+
+  if (lower.includes("maize") || lower.includes("corn")) {
+    return [
+      {
+        title: isHi ? "मक्का कीट व नमी प्रबंधन" : "Maize Pest & Moisture Management",
+        detail: isHi ? "फॉल आर्मीवर्म (Fall Armyworm) की नियमित निगरानी करें। पुष्पन अवस्था में उचित नमी बनाए रखें।" : "Inspect for Fall Armyworm whorl damage. Maintain adequate moisture during tasseling/silking.",
+        time: isHi ? "आज" : "Today",
+        color: "var(--primary)",
+      },
+      {
+        title: isHi ? "मक्का मंडी भाव" : "Maize Market Trend",
+        detail: isHi ? "दावणगेरे मंडी में मक्का का भाव ₹2,150/क्विंटल पर मजबूत है।" : "Maize prices trending steady at ₹2,150/qtl. Plan storage or transport.",
+        time: isHi ? "इस सप्ताह" : "This week",
+        color: "var(--secondary)",
+      },
+    ];
+  }
+
+  if (lower.includes("rice") || lower.includes("paddy")) {
+    return [
+      {
+        title: isHi ? "धान जल स्तर व खाद" : "Rice Water Level & Fertilizer",
+        detail: isHi ? "खेत में 2-3 सेमी पानी का स्तर बनाए रखें। यूरिया की दूसरी खुराक दें।" : "Maintain 2-3 cm standing water. Apply second split of nitrogen top-dressing.",
+        time: isHi ? "आज" : "Today",
+        color: "var(--primary)",
+      },
+      {
+        title: isHi ? "धान रोग निगरानी" : "Rice Health Check",
+        detail: isHi ? "तना छेदक एवं झुलसा रोग की जांच करें।" : "Inspect for stem borer and blast symptoms.",
+        time: isHi ? "इस सप्ताह" : "This week",
+        color: "var(--secondary)",
+      },
+    ];
+  }
+
+  return [
+    {
+      title: isHi ? `${cropName} सिंचाई व स्वास्थ्य` : `${cropName} Irrigation & Soil Health`,
+      detail: isHi ? "मौसम पूर्वानुमान के अनुसार मृदा नमी की जांच करें।" : `Monitor soil moisture and growth stage calibrated for ${cropName}.`,
+      time: isHi ? "आज" : "Today",
+      color: "var(--primary)",
+    },
+    {
+      title: isHi ? `${cropName} मंडी निगरानी` : `${cropName} Market Tracking`,
+      detail: isHi ? "मंडी भावों पर नजर रखें और उचित मूल्य पर उपज बेचें।" : `Mandi prices show stable trend for ${cropName}. Plan harvest accordingly.`,
+      time: isHi ? "इस सप्ताह" : "This week",
+      color: "var(--secondary)",
+    },
+  ];
+}
 
 const defaultForecast = [
-  { day: "Mon", temp: "31°", rain: "10%", icon: Sun },
-  { day: "Tue", temp: "29°", rain: "60%", icon: CloudRain },
+  { day: "Today", temp: "31°", rain: "15%", icon: Sun },
+  { day: "Tue", temp: "29°", rain: "25%", icon: CloudRain },
   { day: "Wed", temp: "28°", rain: "40%", icon: CloudSun },
   { day: "Thu", temp: "30°", rain: "20%", icon: Cloud },
   { day: "Fri", temp: "32°", rain: "5%", icon: Sun },
@@ -51,87 +132,137 @@ interface CropItem {
 
 export default function FarmerDashboard() {
   const { t, i18n } = useTranslation();
-  const [farmerName, setFarmerName] = useState<string>(getFarmerName() || "Farmer");
-  const [villageName, setVillageName] = useState<string>("Field A");
-  const [farmerCrops, setFarmerCrops] = useState<CropItem[]>([]);
-  const [activeCropIndex, setActiveCropIndex] = useState<number>(0);
-  const [priceList, setPriceList] = useState(defaultPrices);
-  const [forecastList, setForecastList] = useState(defaultForecast);
-  const [bestPriceValue, setBestPriceValue] = useState("₹2,340");
-  const [rainChanceValue, setRainChanceValue] = useState("20%");
-  const [actionTasks, setActionTasks] = useState([
-    {
-      title: "Check soil moisture & irrigation",
-      detail: "Weather model recommends monitoring soil before applying fertilizer.",
-      time: "Today",
-      color: "var(--primary)",
-    },
-    {
-      title: "Mandi price monitoring",
-      detail: "Market trends show stable pricing. Plan harvest dispatch accordingly.",
-      time: "This week",
-      color: "var(--secondary)",
-    },
-  ]);
 
-  useEffect(() => {
-    const id = getFarmerId() || localStorage.getItem("cropx-farmer-id");
-    if (!id) return;
-    const farmerId: string = id;
-
-    async function loadDashboardData(fId: string) {
-      const res = await getFarmerById(fId);
-      if (res.success && res.data) {
-        const farmer = res.data;
-        if (farmer.full_name) {
-          setFarmerName(farmer.full_name.split(" ")[0]);
-        }
-        if (farmer.village_name) {
-          setVillageName(farmer.village_name);
-        }
-
-        const registeredCrops: CropItem[] = (farmer.crops || []).map((c) => ({
-          crop_id: c.crop_id,
+  // Instant zero-latency initialization from stored session
+  const storedCrops = getCrops();
+  const storedCropName = getCropName() || "Maize";
+  const initialCrops: CropItem[] =
+    storedCrops.length > 0
+      ? storedCrops.map((c, i) => ({
+          crop_id: c.crop_id || `crop-local-${i}`,
           crop_name: c.crop_name,
           sowing_date: c.sowing_date,
           irrigation_type: c.irrigation_type,
-        }));
+        }))
+      : [{ crop_id: getCropId() || "crop-local-0", crop_name: storedCropName }];
 
-        setFarmerCrops(registeredCrops);
+  const [farmerName, setFarmerName] = useState<string>(
+    getFarmerName() || localStorage.getItem("cropx-farmer-name") || "Farmer"
+  );
+  const [villageName, setVillageName] = useState<string>(
+    localStorage.getItem("cropx-farmer-village") || "North 24 Parganas"
+  );
+  const [farmerCrops, setFarmerCrops] = useState<CropItem[]>(initialCrops);
+  const [activeCropIndex, setActiveCropIndex] = useState<number>(0);
 
-        if (registeredCrops.length > 0) {
-          const currentCrop = registeredCrops[activeCropIndex] || registeredCrops[0];
-          saveCropId(currentCrop.crop_id);
+  const activeCrop = farmerCrops[activeCropIndex] || farmerCrops[0] || initialCrops[0];
 
-          // 1. Fetch live market prices for ALL registered crops
-          const allPrices = [...defaultPrices];
-          const userCropPriceRows = [];
+  const activeCropPriceInfo = getPriceForCrop(activeCrop.crop_name);
+  const [bestPriceValue, setBestPriceValue] = useState<string>(activeCropPriceInfo.price);
+  const [rainChanceValue, setRainChanceValue] = useState("20%");
+  const [forecastList, setForecastList] = useState(defaultForecast);
 
-          for (const c of registeredCrops) {
-            const mRes = await getMarketPricesByCrop(c.crop_id);
-            if (mRes.success && mRes.data && mRes.data.length > 0) {
-              const latest = mRes.data[0];
-              userCropPriceRows.push({
-                crop: `${c.crop_name} ★`,
-                market: latest.mandi_name,
-                value: `₹${latest.price_per_quintal.toLocaleString("en-IN")}`,
-                trend: latest.trend,
-                change: latest.trend === "up" ? "+3.5%" : latest.trend === "down" ? "-1.8%" : "0.0%",
-              });
-            }
+  const [actionTasks, setActionTasks] = useState(
+    getDefaultTasksForCrop(activeCrop.crop_name, i18n.language)
+  );
+
+  // Build instantaneous price list with active crop on top
+  const initialPriceList = [
+    {
+      crop: `${activeCrop.crop_name} ★`,
+      market: activeCropPriceInfo.market,
+      value: activeCropPriceInfo.price,
+      trend: activeCropPriceInfo.trend,
+      change: activeCropPriceInfo.change,
+    },
+    { crop: "Maize", market: "Davanagere Mandi", value: "₹2,150", trend: "up", change: "+3.2%" },
+    { crop: "Rice (Basmati)", market: "Karnal Mandi", value: "₹3,880", trend: "up", change: "+1.8%" },
+    { crop: "Wheat", market: "Azadpur Mandi", value: "₹2,340", trend: "up", change: "+4.2%" },
+    { crop: "Tomato", market: "Kolar Mandi", value: "₹1,650", trend: "up", change: "+6.5%" },
+    { crop: "Onion", market: "Nashik Mandi", value: "₹1,420", trend: "down", change: "-3.1%" },
+  ].filter(
+    (item, index, self) =>
+      index === self.findIndex((t) => t.crop.replace(" ★", "").toLowerCase() === item.crop.replace(" ★", "").toLowerCase() && (t.crop.includes("★") ? item.crop.includes("★") : true))
+  );
+
+  const [priceList, setPriceList] = useState(initialPriceList);
+
+  // When active crop switches, immediately update stats synchronously
+  useEffect(() => {
+    const currentCrop = farmerCrops[activeCropIndex] || farmerCrops[0] || initialCrops[0];
+    const priceInfo = getPriceForCrop(currentCrop.crop_name);
+    setBestPriceValue(priceInfo.price);
+    setActionTasks(getDefaultTasksForCrop(currentCrop.crop_name, i18n.language));
+    saveCropName(currentCrop.crop_name);
+    if (currentCrop.crop_id) saveCropId(currentCrop.crop_id);
+
+    setPriceList((prev) => [
+      {
+        crop: `${currentCrop.crop_name} ★`,
+        market: priceInfo.market,
+        value: priceInfo.price,
+        trend: priceInfo.trend,
+        change: priceInfo.change,
+      },
+      ...prev.filter((p) => !p.crop.toLowerCase().includes(currentCrop.crop_name.toLowerCase())),
+    ]);
+  }, [activeCropIndex, farmerCrops, i18n.language]);
+
+  // Non-blocking background sync for real database & live ML advisory
+  useEffect(() => {
+    const id = getFarmerId() || localStorage.getItem("cropx-farmer-id");
+    if (!id || id.startsWith("demo-")) return;
+
+    // Fetch DB farmer profile asynchronously in background
+    getFarmerById(id)
+      .then((res) => {
+        if (res.success && res.data) {
+          const farmer = res.data;
+          if (farmer.full_name) {
+            setFarmerName(farmer.full_name.split(" ")[0]);
+          }
+          if (farmer.village_name) {
+            setVillageName(farmer.village_name);
+          }
+          if (farmer.crops && farmer.crops.length > 0) {
+            const dbCrops: CropItem[] = farmer.crops.map((c) => ({
+              crop_id: c.crop_id,
+              crop_name: c.crop_name,
+              sowing_date: c.sowing_date,
+              irrigation_type: c.irrigation_type,
+            }));
+            setFarmerCrops(dbCrops);
           }
 
-          if (userCropPriceRows.length > 0) {
-            setBestPriceValue(userCropPriceRows[activeCropIndex]?.value || userCropPriceRows[0].value);
-            // Filter out default benchmarks matching user crop names to avoid duplicates
-            const filteredBenchmarks = allPrices.filter(
-              (p) => !registeredCrops.some((c) => p.crop.toLowerCase().includes(c.crop_name.toLowerCase()))
-            );
-            setPriceList([...userCropPriceRows, ...filteredBenchmarks]);
+          if (farmer.region_id) {
+            getWeatherByRegion(farmer.region_id).then((wRes) => {
+              if (wRes.success && wRes.data && wRes.data.length > 0) {
+                const latest = wRes.data[0];
+                const tempVal = Math.round(latest.temperature_c);
+                const rainPct =
+                  latest.rainfall_mm > 0
+                    ? `${Math.min(95, Math.round(latest.rainfall_mm * 10))}%`
+                    : "15%";
+                setRainChanceValue(rainPct);
+                setForecastList([
+                  { day: "Today", temp: `${tempVal}°`, rain: rainPct, icon: latest.rainfall_mm > 0 ? CloudRain : Sun },
+                  { day: "Tue", temp: `${tempVal - 1}°`, rain: "25%", icon: CloudSun },
+                  { day: "Wed", temp: `${tempVal + 1}°`, rain: "10%", icon: Sun },
+                  { day: "Thu", temp: `${tempVal}°`, rain: "40%", icon: Cloud },
+                  { day: "Fri", temp: `${tempVal + 2}°`, rain: "5%", icon: Sun },
+                ]);
+              }
+            }).catch(() => {});
           }
+        }
+      })
+      .catch(() => {});
 
-          // 2. Fetch AI Advisory for the active crop
-          const advRes = await getAdvisory(fId, currentCrop.crop_id, i18n.language);
+    // Non-blocking advisory fetch in background
+    const currentCrop = farmerCrops[activeCropIndex] || farmerCrops[0];
+    if (currentCrop && currentCrop.crop_id && !currentCrop.crop_id.startsWith("crop-local")) {
+      getAdvisory(id, currentCrop.crop_id, i18n.language)
+        .then((advRes) => {
           if (advRes.success && advRes.data?.advisory_text) {
             setActionTasks([
               {
@@ -148,33 +279,10 @@ export default function FarmerDashboard() {
               },
             ]);
           }
-        }
-
-        // 3. Fetch live weather for farmer's region
-        if (farmer.region_id) {
-          const weatherRes = await getWeatherByRegion(farmer.region_id);
-          if (weatherRes.success && weatherRes.data && weatherRes.data.length > 0) {
-            const latest = weatherRes.data[0];
-            const tempVal = Math.round(latest.temperature_c);
-            const rainPct = latest.rainfall_mm > 0 ? `${Math.min(95, Math.round(latest.rainfall_mm * 10))}%` : "15%";
-            setRainChanceValue(rainPct);
-
-            setForecastList([
-              { day: "Today", temp: `${tempVal}°`, rain: rainPct, icon: latest.rainfall_mm > 0 ? CloudRain : Sun },
-              { day: "Tue", temp: `${tempVal - 1}°`, rain: "25%", icon: CloudSun },
-              { day: "Wed", temp: `${tempVal + 1}°`, rain: "10%", icon: Sun },
-              { day: "Thu", temp: `${tempVal}°`, rain: "40%", icon: Cloud },
-              { day: "Fri", temp: `${tempVal + 2}°`, rain: "5%", icon: Sun },
-            ]);
-          }
-        }
-      }
+        })
+        .catch(() => {});
     }
-
-    loadDashboardData(farmerId);
   }, [activeCropIndex, i18n.language]);
-
-  const activeCrop = farmerCrops[activeCropIndex] || farmerCrops[0] || { crop_name: "Wheat", crop_id: "" };
 
   const stats = [
     { nameKey: "dashboard.cropHealth", value: "94%", chip: "Optimal", icon: Leaf, bg: "var(--primary)" },

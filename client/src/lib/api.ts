@@ -107,18 +107,34 @@ export interface LoginData {
   role: "farmer" | "officer";
 }
 
-// ===== API Functions =====
-
 async function apiFetch<T>(url: string, options?: RequestInit): Promise<ApiResponse<T>> {
   try {
-    // Attach stored JWT to every request
-    const token = localStorage.getItem("cropx-token");
+    let token = localStorage.getItem("cropx-token");
+
+    // Auto-refresh officer token if missing or stale
+    if ((!token || token.startsWith("officer-token-")) && localStorage.getItem("cropx-role") === "officer") {
+      try {
+        const loginRes = await fetch(`${API_BASE}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: "officer" }),
+        });
+        const loginData = await loginRes.json();
+        if (loginData.success && loginData.data?.token) {
+          token = String(loginData.data.token);
+          localStorage.setItem("cropx-token", token);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     const authHeaders: Record<string, string> = {};
     if (token) {
       authHeaders["Authorization"] = `Bearer ${token}`;
     }
 
-    const res = await fetch(`${API_BASE}${url}`, {
+    let res = await fetch(`${API_BASE}${url}`, {
       headers: {
         "Content-Type": "application/json",
         ...authHeaders,
@@ -126,6 +142,33 @@ async function apiFetch<T>(url: string, options?: RequestInit): Promise<ApiRespo
       },
       ...options,
     });
+
+    // Auto retry once if 401 Unauthorized
+    if (res.status === 401 && localStorage.getItem("cropx-role") === "officer") {
+      try {
+        const loginRes = await fetch(`${API_BASE}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: "officer" }),
+        });
+        const loginData = await loginRes.json();
+        if (loginData.success && loginData.data?.token) {
+          token = String(loginData.data.token);
+          localStorage.setItem("cropx-token", token);
+
+          res = await fetch(`${API_BASE}${url}`, {
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              ...options?.headers,
+            },
+            ...options,
+          });
+        }
+      } catch {
+        // ignore
+      }
+    }
 
     const json = await res.json();
     return json as ApiResponse<T>;
